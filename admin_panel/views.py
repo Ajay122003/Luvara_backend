@@ -1,22 +1,40 @@
+# Core Django / DRF imports
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import AdminLoginSerializer
-from categories.models import Category
-from categories.serializers import CategorySerializer
-from .permissions import IsAdminUserCustom
-from products.models import Product
-from products.serializers import ProductSerializer
-from .serializers import AdminProductCreateSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
-from orders.models import Order
-from .serializers import *
-from users.models import User
-from orders.models import Order, OrderItem
-from products.models import Product
+from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count
 from django.utils.timezone import now, timedelta
+
+# Auth
+from rest_framework_simplejwt.tokens import RefreshToken
+
+# Permissions
+from .permissions import IsAdminUserCustom
+
+# Users
+from users.models import User
+
+# Categories
+from categories.models import Category
+from categories.serializers import CategorySerializer
+
+# Products
+from products.models import Product, ProductImage
+from products.serializers import ProductSerializer
+from .serializers import AdminProductCreateSerializer
+
+# Orders
+from orders.models import Order, OrderItem
+
+# Admin Panel Serializers
+from .serializers import AdminLoginSerializer
+
+# NOTE:
+# Avoid duplicate imports, unused imports, repeated modules.
+
+
 
 
 
@@ -252,20 +270,25 @@ class AdminDashboardStatsAPIView(APIView):
         # 2. Total Orders
         total_orders = Order.objects.count()
 
-        # 3. Total Revenue (only PAID + COD)
-        total_revenue = Order.objects.filter(
-            payment_status__in=["PAID", "COD"]
-        ).aggregate(total=Sum("total_amount"))["total"] or 0
+        # 3. Total Revenue (PAID + COD)
+        total_revenue = (
+            Order.objects.filter(payment_status__in=["PAID", "COD"])
+            .aggregate(total=Sum("total_amount"))["total"]
+            or 0
+        )
 
         # 4. Today's Orders
         today = now().date()
         todays_orders = Order.objects.filter(created_at__date=today).count()
 
         # 5. Today's Revenue
-        todays_revenue = Order.objects.filter(
-            created_at__date=today,
-            payment_status__in=["PAID", "COD"]
-        ).aggregate(total=Sum("total_amount"))["total"] or 0
+        todays_revenue = (
+            Order.objects.filter(
+                created_at__date=today,
+                payment_status__in=["PAID", "COD"]
+            ).aggregate(total=Sum("total_amount"))["total"]
+            or 0
+        )
 
         # 6. Pending Orders
         pending_orders = Order.objects.filter(status="PENDING").count()
@@ -280,6 +303,14 @@ class AdminDashboardStatsAPIView(APIView):
             .order_by("-total_sold")[:5]
         )
 
+        # 9. LOW STOCK ALERTS (NEW)
+        LOW_STOCK_THRESHOLD = 5
+
+        low_stock_count = Product.objects.filter(
+            is_active=True,
+            stock__lte=LOW_STOCK_THRESHOLD
+        ).count()
+
         return Response({
             "total_users": total_users,
             "total_orders": total_orders,
@@ -289,4 +320,41 @@ class AdminDashboardStatsAPIView(APIView):
             "pending_orders": pending_orders,
             "delivered_orders": delivered_orders,
             "best_selling_products": list(best_sellers),
+
+            # NEW FIELDS
+            "low_stock_count": low_stock_count,
+            "low_stock_threshold": LOW_STOCK_THRESHOLD,
+        })
+
+
+class AdminLowStockProductsAPIView(APIView):
+    """
+    Returns list of products where stock is below a threshold.
+    Default threshold = 5
+    Admin-only access.
+    """
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        # ?threshold=10  (optional)
+        try:
+            threshold = int(request.GET.get("threshold", 5))
+        except ValueError:
+            threshold = 5
+
+        low_stock_products = Product.objects.filter(
+            is_active=True,
+            stock__lte=threshold
+        ).order_by("stock")
+
+        serializer = ProductSerializer(
+            low_stock_products,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response({
+            "threshold": threshold,
+            "count": len(serializer.data),
+            "results": serializer.data
         })

@@ -18,9 +18,11 @@ urlpatterns = [
 
     # SETTINGS
     path("settings/", AdminSiteSettingsAPIView.as_view()),
-    
+
     # admin stats
-    path("dashboard/", AdminDashboardStatsAPIView.as_view())
+    path("dashboard/", AdminDashboardStatsAPIView.as_view()),
+    #low stock alert
+    path("low-stock-products/", AdminLowStockProductsAPIView.as_view()),
 
 
 ]
