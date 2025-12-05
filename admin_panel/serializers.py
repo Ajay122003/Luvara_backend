@@ -6,6 +6,8 @@ from products.serializers import ProductSerializer
 from rest_framework import serializers
 from orders.models import Order, OrderItem
 from orders.serializers import OrderDetailSerializer
+from .models import SiteSettings
+
 
 
 class AdminLoginSerializer(serializers.Serializer):
@@ -98,3 +100,10 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             }
             for item in obj.items.all()
         ]
+
+
+
+class SiteSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SiteSettings
+        fields = ["enable_cod", "allow_order_cancel", "allow_order_return"]
