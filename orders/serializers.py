@@ -5,6 +5,10 @@ from addresses.models import Address
 from .utils import generate_order_number
 from products.serializers import ProductSerializer
 from .models import ReturnRequest
+from coupons.models import Coupon
+from django.utils.timezone import now
+from decimal import Decimal
+
 
 class OrderItemInputSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
@@ -16,33 +20,83 @@ class OrderItemInputSerializer(serializers.Serializer):
 class OrderCreateSerializer(serializers.Serializer):
     address_id = serializers.IntegerField()
     items = OrderItemInputSerializer(many=True)
+    coupon_code = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
         request = self.context["request"]
         user = request.user
 
-        # Validate address
+        # ---------- Address validate ----------
         try:
             address = Address.objects.get(id=data["address_id"], user=user)
         except Address.DoesNotExist:
             raise serializers.ValidationError("Invalid address")
 
-        # Cache products to avoid repeated queries
+        # ---------- Product + stock validate ----------
         product_ids = [item["product_id"] for item in data["items"]]
-        products = {p.id: p for p in Product.objects.filter(id__in=product_ids, is_active=True)}
+        products = {
+            p.id: p
+            for p in Product.objects.filter(id__in=product_ids, is_active=True)
+        }
 
+        if len(products) != len(set(product_ids)):
+            raise serializers.ValidationError("One or more products are invalid")
+
+        # Calculate subtotal
+        subtotal = Decimal("0.00")
         for item in data["items"]:
-            product = products.get(item["product_id"])
-            if not product:
-                raise serializers.ValidationError("Invalid product")
-
+            product = products[item["product_id"]]
             if product.stock < item["quantity"]:
                 raise serializers.ValidationError(
                     f"Not enough stock for {product.name}. Only {product.stock} left."
                 )
+            price = product.sale_price or product.price
+            subtotal += Decimal(str(price)) * item["quantity"]
 
         data["address_obj"] = address
         data["products_cache"] = products
+        data["subtotal"] = subtotal
+
+        # ---------- Coupon validate (if sent) ----------
+        coupon_code = data.get("coupon_code", "").strip()
+        coupon_obj = None
+        discount = Decimal("0.00")
+        final_amount = subtotal
+
+        if coupon_code:
+            try:
+                coupon_obj = Coupon.objects.get(code__iexact=coupon_code)
+            except Coupon.DoesNotExist:
+                raise serializers.ValidationError({"coupon_code": "Invalid coupon code"})
+
+            if not coupon_obj.is_active:
+                raise serializers.ValidationError({"coupon_code": "Coupon is not active"})
+
+            if coupon_obj.expiry_date < now():
+                raise serializers.ValidationError({"coupon_code": "Coupon expired"})
+
+            if subtotal < Decimal(str(coupon_obj.min_purchase)):
+                raise serializers.ValidationError(
+                    {
+                        "coupon_code": f"Minimum purchase required: {coupon_obj.min_purchase}"
+                    }
+                )
+
+            # Calculate discount
+            if coupon_obj.discount_type == "PERCENT":
+                discount = (Decimal(str(coupon_obj.discount_value)) / Decimal("100")) * subtotal
+            else:  # FLAT
+                discount = Decimal(str(coupon_obj.discount_value))
+
+            # Final amount
+            if discount > subtotal:
+                discount = subtotal
+            final_amount = subtotal - discount
+
+        data["coupon_obj"] = coupon_obj
+        data["discount"] = discount
+        data["final_amount"] = final_amount
+
         return data
 
     def create(self, validated_data):
@@ -52,24 +106,24 @@ class OrderCreateSerializer(serializers.Serializer):
         address = validated_data["address_obj"]
         products = validated_data["products_cache"]
 
-        # Calculate total
-        total_amount = 0
-        for item in validated_data["items"]:
-            product = products[item["product_id"]]
-            price = product.sale_price or product.price
-            total_amount += price * item["quantity"]
+        subtotal = validated_data["subtotal"]
+        discount = validated_data["discount"]
+        final_amount = validated_data["final_amount"]
+        coupon_obj = validated_data["coupon_obj"]
 
-        # Create order
+        # ---------- Create Order ----------
         order = Order.objects.create(
             user=user,
             address=address,
-            total_amount=total_amount,
+            total_amount=final_amount,
             order_number=generate_order_number(),
             payment_status="PENDING",
-            status="PENDING"
+            status="PENDING",
+            coupon=coupon_obj if hasattr(Order, "coupon") else None,
+            discount_amount=discount if hasattr(Order, "discount_amount") else Decimal("0.00"),
         )
 
-        # Create items + reduce stock
+        # ---------- Create OrderItems + reduce stock ----------
         for item in validated_data["items"]:
             product = products[item["product_id"]]
             price = product.sale_price or product.price
@@ -83,7 +137,6 @@ class OrderCreateSerializer(serializers.Serializer):
                 price=price,
             )
 
-            # Reduce stock
             product.stock -= item["quantity"]
             product.save()
 

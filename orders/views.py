@@ -14,37 +14,45 @@ class OrderCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        from admin_panel.models import SiteSettings
         settings = SiteSettings.objects.first()
 
-        payment_method = request.data.get("payment_method", "ONLINE")
+        payment_method = request.data.get("payment_method", "ONLINE")  # default = ONLINE
 
-        # Check COD availability
+        # -------- COD availability check --------
         if payment_method == "COD":
             if not settings or not settings.enable_cod:
-                return Response({"error": "COD is disabled"}, status=403)
+                return Response({"error": "COD is disabled"}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = OrderCreateSerializer(data=request.data, context={"request": request})
 
         if serializer.is_valid():
             order = serializer.save()
 
-            # Assign payment status
-            order.payment_status = "COD" if payment_method == "COD" else "PENDING"
+            # Payment status
+            if payment_method == "COD":
+                order.payment_status = "COD"
+            else:
+                order.payment_status = "PENDING"  # Razorpay pending
+
             order.save()
 
-            return Response({
-                "message": "Order created successfully",
-                "order_id": order.id,
-                "order_number": order.order_number,
-                "total_amount": float(order.total_amount),
-                "payment_status": order.payment_status,
-            }, status=201)
+            return Response(
+                {
+                    "message": "Order created successfully",
+                    "order_id": order.id,
+                    "order_number": order.order_number,
+                    "subtotal": float(serializer.validated_data["subtotal"]),
+                    "discount": float(serializer.validated_data["discount"]),
+                    "total_amount": float(order.total_amount),
+                    "payment_status": order.payment_status,
+                    "coupon_code": request.data.get("coupon_code", "").strip() or None,
+                },
+                status=status.HTTP_201_CREATED,
+            )
 
-        return Response(serializer.errors, status=400)
-
-
-
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
 
 class UserOrderListAPIView(APIView):
     permission_classes = [IsAuthenticated]
