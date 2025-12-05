@@ -16,4 +16,8 @@ urlpatterns = [
     path("orders/", AdminOrderListAPIView.as_view()),          # GET all orders
     path("orders/<int:pk>/", AdminOrderDetailAPIView.as_view()),  # GET/PUT order detail
 
+    # SETTINGS
+    path("settings/", AdminSiteSettingsAPIView.as_view()),
+
+
 ]

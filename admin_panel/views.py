@@ -11,7 +11,7 @@ from products.serializers import ProductSerializer
 from .serializers import AdminProductCreateSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from orders.models import Order
-from .serializers import AdminOrderListSerializer, AdminOrderDetailSerializer
+from .serializers import *
 
 
 
@@ -212,3 +212,24 @@ class AdminOrderDetailAPIView(APIView):
         order.save()
 
         return Response({"message": "Order updated successfully"})
+
+
+# setting enable
+
+class AdminSiteSettingsAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        settings, created = SiteSettings.objects.get_or_create(id=1)
+        serializer = SiteSettingsSerializer(settings)
+        return Response(serializer.data)
+
+    def put(self, request):
+        settings, created = SiteSettings.objects.get_or_create(id=1)
+        serializer = SiteSettingsSerializer(settings, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Settings updated", "data": serializer.data})
+
+        return Response(serializer.errors, status=400)

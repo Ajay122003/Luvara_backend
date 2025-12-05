@@ -4,6 +4,7 @@ from products.models import Product
 from addresses.models import Address
 from .utils import generate_order_number
 from products.serializers import ProductSerializer
+from .models import ReturnRequest
 
 class OrderItemInputSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
@@ -17,54 +18,61 @@ class OrderCreateSerializer(serializers.Serializer):
     items = OrderItemInputSerializer(many=True)
 
     def validate(self, data):
-        # Check address belongs to user
         request = self.context["request"]
         user = request.user
 
+        # Validate address
         try:
             address = Address.objects.get(id=data["address_id"], user=user)
         except Address.DoesNotExist:
             raise serializers.ValidationError("Invalid address")
 
-        # Validate product stock
+        # Cache products to avoid repeated queries
+        product_ids = [item["product_id"] for item in data["items"]]
+        products = {p.id: p for p in Product.objects.filter(id__in=product_ids, is_active=True)}
+
         for item in data["items"]:
-            try:
-                product = Product.objects.get(id=item["product_id"], is_active=True)
-            except Product.DoesNotExist:
+            product = products.get(item["product_id"])
+            if not product:
                 raise serializers.ValidationError("Invalid product")
 
             if product.stock < item["quantity"]:
-                raise serializers.ValidationError(f"Not enough stock for {product.name}")
+                raise serializers.ValidationError(
+                    f"Not enough stock for {product.name}. Only {product.stock} left."
+                )
 
+        data["address_obj"] = address
+        data["products_cache"] = products
         return data
 
     def create(self, validated_data):
         request = self.context["request"]
         user = request.user
 
-        address = Address.objects.get(id=validated_data["address_id"])
+        address = validated_data["address_obj"]
+        products = validated_data["products_cache"]
 
         # Calculate total
         total_amount = 0
         for item in validated_data["items"]:
-            product = Product.objects.get(id=item["product_id"])
-            price = product.sale_price if product.sale_price else product.price
+            product = products[item["product_id"]]
+            price = product.sale_price or product.price
             total_amount += price * item["quantity"]
 
-        # Create Order
+        # Create order
         order = Order.objects.create(
             user=user,
             address=address,
             total_amount=total_amount,
             order_number=generate_order_number(),
             payment_status="PENDING",
-            status="PENDING",
+            status="PENDING"
         )
 
-        # Create Order Items + Reduce Stock
+        # Create items + reduce stock
         for item in validated_data["items"]:
-            product = Product.objects.get(id=item["product_id"])
-            price = product.sale_price if product.sale_price else product.price
+            product = products[item["product_id"]]
+            price = product.sale_price or product.price
 
             OrderItem.objects.create(
                 order=order,
@@ -125,3 +133,12 @@ class OrderListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ["id", "order_number", "total_amount", "payment_status", "status", "created_at"]
+
+
+
+
+class ReturnRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReturnRequest
+        fields = ["id", "order", "reason", "status", "created_at"]
+        read_only_fields = ["status", "created_at", "order"]
