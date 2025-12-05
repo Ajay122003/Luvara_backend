@@ -4,22 +4,43 @@ from rest_framework import status
 from .models import Product
 from .serializers import *
 from rest_framework.permissions import AllowAny
+from .filters import product_filter
+from rest_framework.pagination import PageNumberPagination
+
+
+# class ProductListCreateAPIView(APIView):
+#     permission_classes = [AllowAny]
+
+#     def get(self, request):
+#         products = Product.objects.filter(is_active=True).order_by("-id")
+#         serializer = ProductSerializer(products, many=True, context={"request": request})
+#         return Response(serializer.data)
+
+#     def post(self, request):
+#         serializer = ProductCreateSerializer(data=request.data)
+#         if serializer.is_valid():
+#             product = serializer.save()
+#             return Response(ProductSerializer(product, context={"request": request}).data, status=201)
+
+#         return Response(serializer.errors, status=400)
 
 class ProductListCreateAPIView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        products = Product.objects.filter(is_active=True).order_by("-id")
-        serializer = ProductSerializer(products, many=True, context={"request": request})
-        return Response(serializer.data)
+        queryset = Product.objects.filter(is_active=True)
 
-    def post(self, request):
-        serializer = ProductCreateSerializer(data=request.data)
-        if serializer.is_valid():
-            product = serializer.save()
-            return Response(ProductSerializer(product, context={"request": request}).data, status=201)
+        # --- APPLY FILTERS ---
+        queryset = product_filter(queryset, request.query_params)
 
-        return Response(serializer.errors, status=400)
+        # --- PAGINATION ---
+        paginator = PageNumberPagination()
+        paginator.page_size = 12  # customize as you want
+        result_page = paginator.paginate_queryset(queryset, request)
+
+        serializer = ProductSerializer(result_page, many=True, context={"request": request})
+        return paginator.get_paginated_response(serializer.data)
+
 
 
 class ProductDetailAPIView(APIView):
