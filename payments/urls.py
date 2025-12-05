@@ -1,5 +1,7 @@
 from django.urls import path
+from .views import *
 
 urlpatterns = [
-    # empty for now
+    path("create/", CreateRazorpayOrderAPIView.as_view()),
+    path("verify/", VerifyPaymentAPIView.as_view()),
 ]
