@@ -2,6 +2,7 @@ from django.db import models
 from users.models import User
 from addresses.models import Address
 from products.models import Product
+from coupons.models import Coupon 
 
 ORDER_STATUS = [
     ("PENDING", "Pending"),
@@ -20,6 +21,8 @@ class Order(models.Model):
     order_number = models.CharField(max_length=20, unique=True)
 
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    coupon = models.ForeignKey(Coupon, null=True, blank=True, on_delete=models.SET_NULL)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     payment_status = models.CharField(max_length=20, default="PENDING")  # PAID / FAILED / PENDING
     payment_id = models.CharField(max_length=100, blank=True, null=True) # Razorpay Payment ID
 
