@@ -12,6 +12,12 @@ from .serializers import AdminProductCreateSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from orders.models import Order
 from .serializers import *
+from users.models import User
+from orders.models import Order, OrderItem
+from products.models import Product
+from django.db.models import Sum, Count
+from django.utils.timezone import now, timedelta
+
 
 
 
@@ -233,3 +239,54 @@ class AdminSiteSettingsAPIView(APIView):
             return Response({"message": "Settings updated", "data": serializer.data})
 
         return Response(serializer.errors, status=400)
+
+
+class AdminDashboardStatsAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+
+        # 1. Total Users
+        total_users = User.objects.count()
+
+        # 2. Total Orders
+        total_orders = Order.objects.count()
+
+        # 3. Total Revenue (only PAID + COD)
+        total_revenue = Order.objects.filter(
+            payment_status__in=["PAID", "COD"]
+        ).aggregate(total=Sum("total_amount"))["total"] or 0
+
+        # 4. Today's Orders
+        today = now().date()
+        todays_orders = Order.objects.filter(created_at__date=today).count()
+
+        # 5. Today's Revenue
+        todays_revenue = Order.objects.filter(
+            created_at__date=today,
+            payment_status__in=["PAID", "COD"]
+        ).aggregate(total=Sum("total_amount"))["total"] or 0
+
+        # 6. Pending Orders
+        pending_orders = Order.objects.filter(status="PENDING").count()
+
+        # 7. Delivered Orders
+        delivered_orders = Order.objects.filter(status="DELIVERED").count()
+
+        # 8. Best Selling Products (Top 5)
+        best_sellers = (
+            OrderItem.objects.values("product__name")
+            .annotate(total_sold=Sum("quantity"))
+            .order_by("-total_sold")[:5]
+        )
+
+        return Response({
+            "total_users": total_users,
+            "total_orders": total_orders,
+            "total_revenue": float(total_revenue),
+            "todays_orders": todays_orders,
+            "todays_revenue": float(todays_revenue),
+            "pending_orders": pending_orders,
+            "delivered_orders": delivered_orders,
+            "best_selling_products": list(best_sellers),
+        })
