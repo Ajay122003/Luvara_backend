@@ -8,6 +8,8 @@ from products.serializers import ProductSerializer
 from .models import Order
 from .serializers import *
 from admin_panel.models import SiteSettings
+from django.http import FileResponse
+from .utils_invoice import generate_invoice_pdf
 
 
 class OrderCreateAPIView(APIView):
@@ -164,3 +166,21 @@ class RequestReturnAPIView(APIView):
         ReturnRequest.objects.create(order=order, user=request.user, reason=reason)
 
         return Response({"message": "Return request submitted"}, status=201)
+
+
+
+
+class OrderInvoiceAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, order_id):
+        try:
+            order = Order.objects.get(id=order_id, user=request.user)
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found"}, status=404)
+
+        # Generate invoice PDF
+        file_path = generate_invoice_pdf(order)
+
+        # Return file as response
+        return FileResponse(open(file_path, "rb"), content_type='application/pdf')
