@@ -6,7 +6,15 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ["id", "name", "image", "image_url", "is_active", "sort_order"]
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "image",
+            "image_url",
+            "is_active",
+            "sort_order"
+        ]
 
     def get_image_url(self, obj):
         request = self.context.get("request")

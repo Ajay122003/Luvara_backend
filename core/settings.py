@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     # Third-party apps
     "rest_framework",
     "rest_framework.authtoken",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
 
     # Local apps
@@ -142,6 +143,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 from datetime import timedelta
 
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -151,18 +153,63 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 12,
+
+    #  API Throttling
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/day",    # un-authenticated
+        "user": "1000/day",   # authenticated
+        "otp": "5/min",       # custom scope for OTP endpoints
+    },
+     "DEFAULT_THROTTLE_RATES": {
+        "admin_login": "5/min",
+    }
 }
 
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "BLACKLIST_AFTER_ROTATION": True,
+    "ROTATE_REFRESH_TOKENS": True,
+   
 }
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "unique-snowflake",
+    }
+}
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "": {  # root logger
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+    },
+}
+
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",   # React CRA
-    "http://localhost:5173",   # Vite
-    # Later: "https://luvarastore.com",
+    "http://localhost:5173",
+    "luvarastore.com",
+    "www.luvarastore.com",
+    "api.luvarastore.com",
 ]
+
+DEBUG = False
 
 CORS_ALLOW_ALL_ORIGINS = True  # (dev ku ok, production la strict aakalam)
 

@@ -2,6 +2,12 @@ from rest_framework import serializers
 from .models import Coupon
 from django.utils.timezone import now
 
+
+class AdminCouponSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Coupon
+        fields = "__all__"
+
 class CouponApplySerializer(serializers.Serializer):
     code = serializers.CharField()
     amount = serializers.FloatField()
@@ -26,6 +32,10 @@ class CouponApplySerializer(serializers.Serializer):
                 f"Minimum purchase required: {coupon.min_purchase}"
             )
 
+        # Improvement 1: Prevent invalid percent ( >100% )
+        if coupon.discount_type == "PERCENT" and coupon.discount_value > 100:
+            raise serializers.ValidationError("Invalid discount percentage")
+
         data["coupon_obj"] = coupon
         return data
 
@@ -33,10 +43,13 @@ class CouponApplySerializer(serializers.Serializer):
         coupon = validated_data["coupon_obj"]
         amount = validated_data["amount"]
 
+        # PERCENT discount
         if coupon.discount_type == "PERCENT":
             discount = (coupon.discount_value / 100) * amount
+
+        # FLAT discount — apply only up to order amount
         else:
-            discount = coupon.discount_value
+            discount = min(coupon.discount_value, amount)
 
         final_amount = max(amount - discount, 0)
 

@@ -15,32 +15,52 @@ class AddToCartAPIView(APIView):
         size = request.data.get("size", "")
         color = request.data.get("color", "")
 
+        if quantity <= 0:
+            return Response({"error": "Quantity must be at least 1"}, status=400)
+
+        # Maximum 10 items per product
+        if quantity > 10:
+            return Response({"error": "Max 10 items allowed"}, status=400)
+
         try:
             product = Product.objects.get(id=product_id, is_active=True)
         except Product.DoesNotExist:
             return Response({"error": "Product not found"}, status=404)
 
-        # Check stock
+        # Stock check
         if product.stock < quantity:
             return Response({"error": "Not enough stock"}, status=400)
 
-        # If same product exists → increase quantity
+        # Get existing cart item
         cart_item, created = CartItem.objects.get_or_create(
-            user=user, product=product, size=size, color=color
+            user=user,
+            product=product,
+            size=size,
+            color=color
         )
 
-        cart_item.quantity += quantity
+        new_quantity = cart_item.quantity + quantity
+
+        if new_quantity > 10:
+            return Response({"error": "Max 10 items allowed"}, status=400)
+
+        if new_quantity > product.stock:
+            return Response({"error": "Stock limit reached"}, status=400)
+
+        cart_item.quantity = new_quantity
         cart_item.save()
 
-        return Response({"message": "Added to cart successfully"})
+        return Response({"message": "Added to cart successfully"}, status=200)
+
 
 class CartListAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        items = CartItem.objects.filter(user=request.user)
+        items = CartItem.objects.filter(user=request.user).order_by("-added_at")
         serializer = CartItemSerializer(items, many=True)
         return Response(serializer.data)
+
 
 class UpdateCartItemAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -53,13 +73,20 @@ class UpdateCartItemAPIView(APIView):
 
         quantity = int(request.data.get("quantity", item.quantity))
 
-        if item.product.stock < quantity:
+        if quantity <= 0:
+            return Response({"error": "Quantity must be at least 1"}, status=400)
+
+        if quantity > 10:
+            return Response({"error": "Max 10 items allowed"}, status=400)
+
+        if quantity > item.product.stock:
             return Response({"error": "Not enough stock"}, status=400)
 
         item.quantity = quantity
         item.save()
 
         return Response({"message": "Cart updated successfully"})
+
 
 
 class RemoveCartItemAPIView(APIView):

@@ -1,11 +1,11 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from .models import Category
 from .serializers import CategorySerializer
 
-class CategoryListCreateAPIView(APIView):
+# PUBLIC CATEGORY LIST (User Side)
+class CategoryListAPIView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
@@ -13,44 +13,18 @@ class CategoryListCreateAPIView(APIView):
         serializer = CategorySerializer(categories, many=True, context={"request": request})
         return Response(serializer.data, status=200)
 
-    def post(self, request):
-        serializer = CategorySerializer(data=request.data, context={"request": request})
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
 
-
+# PUBLIC CATEGORY DETAIL (User Side) — SLUG BASED
 class CategoryDetailAPIView(APIView):
+    permission_classes = [AllowAny]
 
-    def get(self, request, pk):
+    def get(self, request, slug):
         try:
-            category = Category.objects.get(pk=pk)
+            category = Category.objects.get(slug=slug, is_active=True)
         except Category.DoesNotExist:
             return Response({"error": "Category not found"}, status=404)
 
         serializer = CategorySerializer(category, context={"request": request})
         return Response(serializer.data)
 
-    def put(self, request, pk):
-        try:
-            category = Category.objects.get(pk=pk)
-        except Category.DoesNotExist:
-            return Response({"error": "Category not found"}, status=404)
-
-        serializer = CategorySerializer(category, data=request.data, partial=True, context={"request": request})
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-
-        return Response(serializer.errors, status=400)
-
-    def delete(self, request, pk):
-        try:
-            category = Category.objects.get(pk=pk)
-        except Category.DoesNotExist:
-            return Response({"error": "Category not found"}, status=404)
-
-        category.delete()
-        return Response({"message": "Category deleted successfully"}, status=200)
 
