@@ -1,20 +1,20 @@
 from rest_framework import serializers
-from .models import Order, OrderItem
+from decimal import Decimal
+from django.utils.timezone import now
+
+from .models import Order, OrderItem, ReturnRequest
 from products.models import Product
 from addresses.models import Address
-from .utils import generate_order_number
 from products.serializers import ProductSerializer
-from .models import ReturnRequest
+from .utils import generate_order_number
 from coupons.models import Coupon
-from django.utils.timezone import now
-from decimal import Decimal
 
 
 class OrderItemInputSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
     quantity = serializers.IntegerField()
-    size = serializers.CharField(required=False)
-    color = serializers.CharField(required=False)
+    size = serializers.CharField(required=False, allow_blank=True)
+    color = serializers.CharField(required=False, allow_blank=True)
 
 
 class OrderCreateSerializer(serializers.Serializer):
@@ -67,13 +67,19 @@ class OrderCreateSerializer(serializers.Serializer):
             try:
                 coupon_obj = Coupon.objects.get(code__iexact=coupon_code)
             except Coupon.DoesNotExist:
-                raise serializers.ValidationError({"coupon_code": "Invalid coupon code"})
+                raise serializers.ValidationError(
+                    {"coupon_code": "Invalid coupon code"}
+                )
 
             if not coupon_obj.is_active:
-                raise serializers.ValidationError({"coupon_code": "Coupon is not active"})
+                raise serializers.ValidationError(
+                    {"coupon_code": "Coupon is not active"}
+                )
 
             if coupon_obj.expiry_date < now():
-                raise serializers.ValidationError({"coupon_code": "Coupon expired"})
+                raise serializers.ValidationError(
+                    {"coupon_code": "Coupon expired"}
+                )
 
             if subtotal < Decimal(str(coupon_obj.min_purchase)):
                 raise serializers.ValidationError(
@@ -84,13 +90,16 @@ class OrderCreateSerializer(serializers.Serializer):
 
             # Calculate discount
             if coupon_obj.discount_type == "PERCENT":
-                discount = (Decimal(str(coupon_obj.discount_value)) / Decimal("100")) * subtotal
+                discount = (
+                    Decimal(str(coupon_obj.discount_value)) / Decimal("100")
+                ) * subtotal
             else:  # FLAT
                 discount = Decimal(str(coupon_obj.discount_value))
 
-            # Final amount
+            # Ensure not more than subtotal
             if discount > subtotal:
                 discount = subtotal
+
             final_amount = subtotal - discount
 
         data["coupon_obj"] = coupon_obj
@@ -115,12 +124,12 @@ class OrderCreateSerializer(serializers.Serializer):
         order = Order.objects.create(
             user=user,
             address=address,
-            total_amount=final_amount,
+            total_amount=final_amount,           # store final amount
             order_number=generate_order_number(),
             payment_status="PENDING",
             status="PENDING",
-            coupon=coupon_obj if hasattr(Order, "coupon") else None,
-            discount_amount=discount if hasattr(Order, "discount_amount") else Decimal("0.00"),
+            coupon=coupon_obj,
+            discount_amount=discount,
         )
 
         # ---------- Create OrderItems + reduce stock ----------
@@ -143,7 +152,6 @@ class OrderCreateSerializer(serializers.Serializer):
         return order
 
 
-
 class OrderItemDetailSerializer(serializers.ModelSerializer):
     product = ProductSerializer()
 
@@ -162,11 +170,12 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "id",
             "order_number",
             "total_amount",
+            "discount_amount",
             "payment_status",
             "status",
             "created_at",
             "address",
-            "items"
+            "items",
         ]
 
     def get_address(self, obj):
@@ -185,9 +194,14 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 class OrderListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
-        fields = ["id", "order_number", "total_amount", "payment_status", "status", "created_at"]
-
-
+        fields = [
+            "id",
+            "order_number",
+            "total_amount",
+            "payment_status",
+            "status",
+            "created_at",
+        ]
 
 
 class ReturnRequestSerializer(serializers.ModelSerializer):

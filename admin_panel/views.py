@@ -1,42 +1,26 @@
-# Core Django / DRF imports
+import logging
+from django.db.models import Sum
+from django.utils.timezone import now
+from django.core.cache import cache
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum, Count
-from django.utils.timezone import now, timedelta
-
-# Auth
 from rest_framework_simplejwt.tokens import RefreshToken
-
-# Permissions
 from .permissions import IsAdminUserCustom
-
-# Users
+from .models import SiteSettings
+from .serializers import *
 from users.models import User
-
-# Categories
 from categories.models import Category
 from categories.serializers import CategorySerializer
-
-# Products
 from products.models import Product, ProductImage
 from products.serializers import ProductSerializer
-from .serializers import AdminProductCreateSerializer
-
-# Orders
 from orders.models import Order, OrderItem
-
-# Admin Panel Serializers
-from .serializers import *
-
-# NOTE:
-# Avoid duplicate imports, unused imports, repeated modules.
+from coupons.models import Coupon
+from coupons.serializers import AdminCouponSerializer
 
 
-
-
+logger = logging.getLogger(__name__)
 
 
 def generate_tokens(user):
@@ -53,15 +37,16 @@ class AdminLoginAPIView(APIView):
         if serializer.is_valid():
             admin = serializer.validated_data
             tokens = generate_tokens(admin)
-            return Response({
-                "message": "Admin login successful",
-                "tokens": tokens
-            })
+            return Response(
+                {
+                    "message": "Admin login successful",
+                    "tokens": tokens,
+                }
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# ----- TEST VIEW (Admin Protected) -----
 class AdminTestAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 
@@ -69,22 +54,28 @@ class AdminTestAPIView(APIView):
         return Response({"message": "Admin access confirmed!"})
 
 
-#CATEGORY
+# -----------------------------
+# CATEGORY MANAGEMENT
+# -----------------------------
 class AdminCategoryListCreateAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
-    parser_classes = [MultiPartParser, FormParser]  # for image uploads
+    parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request):
-        categories = Category.objects.all().order_by("sort_order")
-        serializer = CategorySerializer(categories, many=True, context={"request": request})
+        categories = Category.objects.all().order_by("sort_order", "name")
+        serializer = CategorySerializer(
+            categories, many=True, context={"request": request}
+        )
         return Response(serializer.data)
 
     def post(self, request):
-        serializer = CategorySerializer(data=request.data, context={"request": request})
+        serializer = CategorySerializer(
+            data=request.data, context={"request": request}
+        )
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AdminCategoryDetailAPIView(APIView):
@@ -100,7 +91,7 @@ class AdminCategoryDetailAPIView(APIView):
     def get(self, request, pk):
         category = self.get_object(pk)
         if not category:
-            return Response({"error": "Category not found"}, status=404)
+            return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = CategorySerializer(category, context={"request": request})
         return Response(serializer.data)
@@ -108,46 +99,58 @@ class AdminCategoryDetailAPIView(APIView):
     def put(self, request, pk):
         category = self.get_object(pk)
         if not category:
-            return Response({"error": "Category not found"}, status=404)
+            return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = CategorySerializer(category, data=request.data, partial=True, context={"request": request})
+        serializer = CategorySerializer(
+            category,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
 
-        return Response(serializer.errors, status=400)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
         category = self.get_object(pk)
         if not category:
-            return Response({"error": "Category not found"}, status=404)
+            return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
 
         category.delete()
-        return Response({"message": "Category deleted successfully"}, status=200)
+        return Response(
+            {"message": "Category deleted successfully"},
+            status=status.HTTP_200_OK,
+        )
 
 
-
-
-# ADMIN PRODUCT LIST + CREATE
+# -----------------------------
+# PRODUCT MANAGEMENT
+# -----------------------------
 class AdminProductListCreateAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
     parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request):
         products = Product.objects.all().order_by("-id")
-        serializer = ProductSerializer(products, many=True, context={"request": request})
+        serializer = ProductSerializer(
+            products, many=True, context={"request": request}
+        )
         return Response(serializer.data)
 
     def post(self, request):
         serializer = AdminProductCreateSerializer(data=request.data)
         if serializer.is_valid():
             product = serializer.save()
-            return Response(ProductSerializer(product, context={"request": request}).data, status=201)
+            return Response(
+                ProductSerializer(product, context={"request": request}).data,
+                status=status.HTTP_201_CREATED,
+            )
 
-        return Response(serializer.errors, status=400)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# ADMIN PRODUCT DETAIL (GET / PUT / DELETE)
 class AdminProductDetailAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
     parser_classes = [MultiPartParser, FormParser]
@@ -161,7 +164,10 @@ class AdminProductDetailAPIView(APIView):
     def get(self, request, pk):
         product = self.get_object(pk)
         if not product:
-            return Response({"error": "Product not found"}, status=404)
+            return Response(
+                {"error": "Product not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         serializer = ProductSerializer(product, context={"request": request})
         return Response(serializer.data)
@@ -169,27 +175,42 @@ class AdminProductDetailAPIView(APIView):
     def put(self, request, pk):
         product = self.get_object(pk)
         if not product:
-            return Response({"error": "Product not found"}, status=404)
+            return Response(
+                {"error": "Product not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
-        serializer = AdminProductCreateSerializer(product, data=request.data, partial=True)
+        serializer = AdminProductCreateSerializer(
+            product, data=request.data, partial=True
+        )
         if serializer.is_valid():
-            serializer.save()
-            updated = Product.objects.get(pk=pk)
-            return Response(ProductSerializer(updated, context={"request": request}).data)
+            updated_product = serializer.save()
+            return Response(
+                ProductSerializer(
+                    updated_product, context={"request": request}
+                ).data
+            )
 
-        return Response(serializer.errors, status=400)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
         product = self.get_object(pk)
         if not product:
-            return Response({"error": "Product not found"}, status=404)
+            return Response(
+                {"error": "Product not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         product.delete()
-        return Response({"message": "Product deleted successfully"}, status=200)
+        return Response(
+            {"message": "Product deleted successfully"},
+            status=status.HTTP_200_OK,
+        )
 
 
-
-#ORDER MANAGE
+# -----------------------------
+# ORDER MANAGEMENT
+# -----------------------------
 class AdminOrderListAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 
@@ -197,7 +218,9 @@ class AdminOrderListAPIView(APIView):
         status_filter = request.GET.get("status")
 
         if status_filter:
-            orders = Order.objects.filter(status=status_filter).order_by("-created_at")
+            orders = Order.objects.filter(status=status_filter).order_by(
+                "-created_at"
+            )
         else:
             orders = Order.objects.all().order_by("-created_at")
 
@@ -212,7 +235,9 @@ class AdminOrderDetailAPIView(APIView):
         try:
             order = Order.objects.get(id=pk)
         except Order.DoesNotExist:
-            return Response({"error": "Order not found"}, status=404)
+            return Response(
+                {"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
         serializer = AdminOrderDetailSerializer(order)
         return Response(serializer.data)
@@ -221,9 +246,10 @@ class AdminOrderDetailAPIView(APIView):
         try:
             order = Order.objects.get(id=pk)
         except Order.DoesNotExist:
-            return Response({"error": "Order not found"}, status=404)
+            return Response(
+                {"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
-        # Update only order status & payment status
         new_status = request.data.get("status")
         new_payment_status = request.data.get("payment_status")
 
@@ -238,80 +264,85 @@ class AdminOrderDetailAPIView(APIView):
         return Response({"message": "Order updated successfully"})
 
 
-# setting enable
-
+# -----------------------------
+# SITE SETTINGS (COD / CANCEL / RETURN)
+# -----------------------------
 class AdminSiteSettingsAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 
     def get(self, request):
-        settings, created = SiteSettings.objects.get_or_create(id=1)
-        serializer = SiteSettingsSerializer(settings)
+        settings_obj, created = SiteSettings.objects.get_or_create(id=1)
+        serializer = SiteSettingsSerializer(settings_obj)
         return Response(serializer.data)
 
     def put(self, request):
-        settings, created = SiteSettings.objects.get_or_create(id=1)
-        serializer = SiteSettingsSerializer(settings, data=request.data, partial=True)
+        settings_obj, created = SiteSettings.objects.get_or_create(id=1)
+        serializer = SiteSettingsSerializer(
+            settings_obj, data=request.data, partial=True
+        )
 
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Settings updated", "data": serializer.data})
+            return Response(
+                {"message": "Settings updated", "data": serializer.data}
+            )
 
-        return Response(serializer.errors, status=400)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# -----------------------------
+# DASHBOARD STATS + CACHE
+# -----------------------------
 class AdminDashboardStatsAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 
     def get(self, request):
+        cached_data = cache.get("admin_dashboard_stats")
+        if cached_data:
+            logger.info("Dashboard data served from CACHE")
+            return Response(cached_data)
 
-        # 1. Total Users
+        logger.info("Dashboard data generated FRESH")
+
         total_users = User.objects.count()
-
-        # 2. Total Orders
         total_orders = Order.objects.count()
 
-        # 3. Total Revenue (PAID + COD)
         total_revenue = (
             Order.objects.filter(payment_status__in=["PAID", "COD"])
             .aggregate(total=Sum("total_amount"))["total"]
             or 0
         )
 
-        # 4. Today's Orders
         today = now().date()
         todays_orders = Order.objects.filter(created_at__date=today).count()
 
-        # 5. Today's Revenue
         todays_revenue = (
             Order.objects.filter(
                 created_at__date=today,
-                payment_status__in=["PAID", "COD"]
+                payment_status__in=["PAID", "COD"],
             ).aggregate(total=Sum("total_amount"))["total"]
             or 0
         )
 
-        # 6. Pending Orders
         pending_orders = Order.objects.filter(status="PENDING").count()
-
-        # 7. Delivered Orders
         delivered_orders = Order.objects.filter(status="DELIVERED").count()
 
-        # 8. Best Selling Products (Top 5)
         best_sellers = (
-            OrderItem.objects.values("product__name")
+            OrderItem.objects.values("product_id", "product__name")
             .annotate(total_sold=Sum("quantity"))
             .order_by("-total_sold")[:5]
         )
 
-        # 9. LOW STOCK ALERTS (NEW)
         LOW_STOCK_THRESHOLD = 5
-
         low_stock_count = Product.objects.filter(
-            is_active=True,
-            stock__lte=LOW_STOCK_THRESHOLD
+            is_active=True, stock__lte=LOW_STOCK_THRESHOLD
         ).count()
 
-        return Response({
+        total_products = Product.objects.count()
+        active_products = Product.objects.filter(is_active=True).count()
+        total_categories = Category.objects.count()
+
+        data = {
             "total_users": total_users,
             "total_orders": total_orders,
             "total_revenue": float(total_revenue),
@@ -320,11 +351,16 @@ class AdminDashboardStatsAPIView(APIView):
             "pending_orders": pending_orders,
             "delivered_orders": delivered_orders,
             "best_selling_products": list(best_sellers),
-
-            # NEW FIELDS
             "low_stock_count": low_stock_count,
             "low_stock_threshold": LOW_STOCK_THRESHOLD,
-        })
+            "total_products": total_products,
+            "active_products": active_products,
+            "total_categories": total_categories,
+        }
+
+        cache.set("admin_dashboard_stats", data, timeout=60)
+
+        return Response(data)
 
 
 class AdminLowStockProductsAPIView(APIView):
@@ -333,28 +369,83 @@ class AdminLowStockProductsAPIView(APIView):
     Default threshold = 5
     Admin-only access.
     """
+
     permission_classes = [IsAdminUserCustom]
 
     def get(self, request):
-        # ?threshold=10  (optional)
         try:
             threshold = int(request.GET.get("threshold", 5))
         except ValueError:
             threshold = 5
 
         low_stock_products = Product.objects.filter(
-            is_active=True,
-            stock__lte=threshold
+            is_active=True, stock__lte=threshold
         ).order_by("stock")
 
         serializer = ProductSerializer(
             low_stock_products,
             many=True,
-            context={"request": request}
+            context={"request": request},
         )
 
-        return Response({
-            "threshold": threshold,
-            "count": len(serializer.data),
-            "results": serializer.data
-        })
+        return Response(
+            {
+                "threshold": threshold,
+                "count": len(serializer.data),
+                "results": serializer.data,
+            }
+        )
+
+#coupon manage
+
+class AdminCouponListCreateAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        coupons = Coupon.objects.all().order_by("-id")
+        serializer = AdminCouponSerializer(coupons, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = AdminCouponSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Coupon created", "data": serializer.data}, status=201)
+        return Response(serializer.errors, status=400)
+
+class AdminCouponDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get_object(self, pk):
+        try:
+            return Coupon.objects.get(id=pk)
+        except Coupon.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        coupon = self.get_object(pk)
+        if not coupon:
+            return Response({"error": "Coupon not found"}, status=404)
+
+        serializer = AdminCouponSerializer(coupon)
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        coupon = self.get_object(pk)
+        if not coupon:
+            return Response({"error": "Coupon not found"}, status=404)
+
+        serializer = AdminCouponSerializer(coupon, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Coupon updated", "data": serializer.data})
+
+        return Response(serializer.errors, status=400)
+
+    def delete(self, request, pk):
+        coupon = self.get_object(pk)
+        if not coupon:
+            return Response({"error": "Coupon not found"}, status=404)
+
+        coupon.delete()
+        return Response({"message": "Coupon deleted"}, status=200)

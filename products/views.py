@@ -1,86 +1,79 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Product
-from .serializers import *
 from rest_framework.permissions import AllowAny
-from .filters import product_filter
 from rest_framework.pagination import PageNumberPagination
+from .models import Product, ProductImage
+from .serializers import ProductSerializer, ProductCreateSerializer
+from .filters import product_filter
+from admin_panel.permissions import IsAdminUserCustom
+from json import loads
 
-
-# class ProductListCreateAPIView(APIView):
-#     permission_classes = [AllowAny]
-
-#     def get(self, request):
-#         products = Product.objects.filter(is_active=True).order_by("-id")
-#         serializer = ProductSerializer(products, many=True, context={"request": request})
-#         return Response(serializer.data)
-
-#     def post(self, request):
-#         serializer = ProductCreateSerializer(data=request.data)
-#         if serializer.is_valid():
-#             product = serializer.save()
-#             return Response(ProductSerializer(product, context={"request": request}).data, status=201)
-
-#         return Response(serializer.errors, status=400)
 
 class ProductListCreateAPIView(APIView):
-    permission_classes = [AllowAny]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsAdminUserCustom()]
+        return [AllowAny()]
 
     def get(self, request):
         queryset = Product.objects.filter(is_active=True)
-
-        # --- APPLY FILTERS ---
         queryset = product_filter(queryset, request.query_params)
 
-        # --- PAGINATION ---
         paginator = PageNumberPagination()
-        paginator.page_size = 12  # customize as you want
+        paginator.page_size = 12
         result_page = paginator.paginate_queryset(queryset, request)
 
         serializer = ProductSerializer(result_page, many=True, context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 
+    def post(self, request):
+        serializer = ProductCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            product = serializer.save()
+            return Response(ProductSerializer(product, context={"request": request}).data, status=201)
+        return Response(serializer.errors, status=400)
 
 
 class ProductDetailAPIView(APIView):
 
-    def get(self, request, pk):
+    permission_classes = [IsAdminUserCustom]
+
+    def get_object(self, pk):
         try:
-            product = Product.objects.get(pk=pk)
+            return Product.objects.get(pk=pk)
         except Product.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        product = self.get_object(pk)
+        if not product:
             return Response({"error": "Product not found"}, status=404)
 
         serializer = ProductSerializer(product, context={"request": request})
         return Response(serializer.data)
 
     def put(self, request, pk):
-        try:
-            product = Product.objects.get(pk=pk)
-        except Product.DoesNotExist:
+        product = self.get_object(pk)
+        if not product:
             return Response({"error": "Product not found"}, status=404)
 
-        # Normal fields update
         data = request.data.copy()
 
-        # Convert JSON text → Python list
         if "sizes" in data:
-            from json import loads
             data["sizes"] = loads(data["sizes"])
 
         if "colors" in data:
-            from json import loads
             data["colors"] = loads(data["colors"])
 
         serializer = ProductSerializer(product, data=data, partial=True)
-
         if serializer.is_valid():
             serializer.save()
 
-            # NEW IMAGES UPLOAD
+            # NEW IMAGES
             if "images" in request.FILES:
-                images = request.FILES.getlist("images")
-                for img in images:
+                for img in request.FILES.getlist("images"):
                     ProductImage.objects.create(product=product, image=img)
 
             return Response(ProductSerializer(product, context={"request": request}).data)
@@ -88,9 +81,8 @@ class ProductDetailAPIView(APIView):
         return Response(serializer.errors, status=400)
 
     def delete(self, request, pk):
-        try:
-            product = Product.objects.get(pk=pk)
-        except Product.DoesNotExist:
+        product = self.get_object(pk)
+        if not product:
             return Response({"error": "Product not found"}, status=404)
 
         product.delete()
@@ -98,6 +90,8 @@ class ProductDetailAPIView(APIView):
 
 
 class DeleteProductImageAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
     def delete(self, request, image_id):
         try:
             img = ProductImage.objects.get(id=image_id)

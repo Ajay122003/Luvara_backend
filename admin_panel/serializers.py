@@ -1,13 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
+
 from users.models import User
 from products.models import Product, ProductImage
-from products.serializers import ProductSerializer
-from rest_framework import serializers
 from orders.models import Order, OrderItem
-from orders.serializers import OrderDetailSerializer
+from addresses.serializers import AddressSerializer
 from .models import SiteSettings
-
 
 
 class AdminLoginSerializer(serializers.Serializer):
@@ -27,21 +25,28 @@ class AdminLoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("You are not authorized as admin")
 
         return user
-    
 
 
 class AdminProductCreateSerializer(serializers.ModelSerializer):
     images = serializers.ListField(
         child=serializers.ImageField(),
         write_only=True,
-        required=False
+        required=False,
     )
 
     class Meta:
         model = Product
         fields = [
-            "name", "description", "price", "sale_price", "sizes", "colors",
-            "stock", "category", "is_active", "images"
+            "name",
+            "description",
+            "price",
+            "sale_price",
+            "sizes",
+            "colors",
+            "stock",
+            "category",
+            "is_active",
+            "images",
         ]
 
     def create(self, validated_data):
@@ -53,6 +58,21 @@ class AdminProductCreateSerializer(serializers.ModelSerializer):
 
         return product
 
+    def update(self, instance, validated_data):
+        # Handle basic fields
+        images = validated_data.pop("images", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # If new images provided → replace old images
+        if images is not None:
+            ProductImage.objects.filter(product=instance).delete()
+            for img in images:
+                ProductImage.objects.create(product=instance, image=img)
+
+        return instance
 
 
 class AdminOrderListSerializer(serializers.ModelSerializer):
@@ -74,6 +94,7 @@ class AdminOrderListSerializer(serializers.ModelSerializer):
 class AdminOrderDetailSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     user_email = serializers.CharField(source="user.email", read_only=True)
+    address_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -85,8 +106,8 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             "payment_status",
             "status",
             "created_at",
-            "address",
-            "items"
+            "address_details",
+            "items",
         ]
 
     def get_items(self, obj):
@@ -101,6 +122,10 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             for item in obj.items.all()
         ]
 
+    def get_address_details(self, obj):
+        if not obj.address:
+            return None
+        return AddressSerializer(obj.address).data
 
 
 class SiteSettingsSerializer(serializers.ModelSerializer):

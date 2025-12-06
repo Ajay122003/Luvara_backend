@@ -14,5 +14,10 @@ class Coupon(models.Model):
     expiry_date = models.DateTimeField()
     is_active = models.BooleanField(default=True)
 
+    # FUTURE PRO FEATURES (optional now, but ready)
+    usage_limit = models.IntegerField(default=999999)
+    used_count = models.IntegerField(default=0)
+
     def __str__(self):
         return self.code
+

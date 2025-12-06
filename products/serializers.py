@@ -1,6 +1,6 @@
 from rest_framework import serializers
-from .models import *
-from categories.models import Category
+from .models import Product, ProductImage
+
 
 class ProductImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -17,21 +17,27 @@ class ProductImageSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
+    effective_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
             "id", "name", "description",
-            "price", "sale_price", "sizes", "colors",
+            "price", "sale_price", "effective_price",
+            "sizes", "colors",
             "stock", "category", "category_name",
             "images", "is_active", "created_at"
         ]
+
+    def get_effective_price(self, obj):
+        return float(obj.sale_price if obj.sale_price else obj.price)
 
 
 class ProductCreateSerializer(serializers.ModelSerializer):
     images = serializers.ListField(
         child=serializers.ImageField(),
-        write_only=True
+        write_only=True,
+        required=True
     )
 
     class Meta:
