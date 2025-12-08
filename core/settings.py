@@ -151,24 +151,26 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.AllowAny",
     ),
+
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 12,
 
-    #  API Throttling
+    # Throttling
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.ScopedRateThrottle",
     ],
+
+    # ALL RATES MERGED HERE
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "100/day",    # un-authenticated
-        "user": "1000/day",   # authenticated
-        "otp": "5/min",       # custom scope for OTP endpoints
-    },
-     "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/day",
+        "user": "1000/day",
+        "otp": "5/min",
         "admin_login": "5/min",
     }
 }
+
 
 
 SIMPLE_JWT = {
@@ -204,12 +206,12 @@ LOGGING = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",   # React CRA
     "http://localhost:5173",
-    "luvarastore.com",
-    "www.luvarastore.com",
-    "api.luvarastore.com",
+    # "luvarastore.com",
+    # "www.luvarastore.com",
+    # "api.luvarastore.com",
 ]
 
-DEBUG = False
+
 
 CORS_ALLOW_ALL_ORIGINS = True  # (dev ku ok, production la strict aakalam)
 
