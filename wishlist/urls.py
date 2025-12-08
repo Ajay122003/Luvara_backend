@@ -1,8 +1,9 @@
 from django.urls import path
-from .views import WishlistListAPIView, WishlistToggleAPIView, WishlistRemoveAPIView
+from .views import *
 
 urlpatterns = [
-    path("", WishlistListAPIView.as_view()),               # GET /api/wishlist/
-    path("toggle/", WishlistToggleAPIView.as_view()),      # POST /api/wishlist/toggle/
-    path("<int:item_id>/remove/", WishlistRemoveAPIView.as_view()),  # DELETE /api/wishlist/3/remove/
+    path("", WishlistListAPIView.as_view()),
+    path("toggle/", WishlistToggleAPIView.as_view()),
+    path("<int:item_id>/remove/", WishlistRemoveAPIView.as_view()),
+    path("status/", WishlistStatusAPIView.as_view()),   # NEW
 ]

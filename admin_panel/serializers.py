@@ -132,3 +132,28 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = SiteSettings
         fields = ["enable_cod", "allow_order_cancel", "allow_order_return"]
+
+
+class AdminEmailChangeSerializer(serializers.Serializer):
+    new_email = serializers.EmailField()
+
+    def validate_new_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("This email is already taken")
+        return value
+
+
+class AdminPasswordChangeSerializer(serializers.Serializer):
+    old_password = serializers.CharField()
+    new_password = serializers.CharField(min_length=6)
+
+    def validate(self, data):
+        user = self.context["request"].user
+        if not user.check_password(data["old_password"]):
+            raise serializers.ValidationError({"old_password": "Incorrect old password"})
+        return data
+
+
+class AdminOTPVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6)
