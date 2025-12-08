@@ -18,6 +18,8 @@ from products.serializers import ProductSerializer
 from orders.models import Order, OrderItem
 from coupons.models import Coupon
 from coupons.serializers import AdminCouponSerializer
+from .utils_email import send_admin_login_alert
+
 
 
 logger = logging.getLogger(__name__)
@@ -31,20 +33,98 @@ def generate_tokens(user):
     }
 
 
+from .models import AdminOTP
+from .utils_email import send_admin_otp_email, generate_otp
+
 class AdminLoginAPIView(APIView):
     def post(self, request):
         serializer = AdminLoginSerializer(data=request.data)
         if serializer.is_valid():
             admin = serializer.validated_data
-            tokens = generate_tokens(admin)
-            return Response(
-                {
-                    "message": "Admin login successful",
-                    "tokens": tokens,
-                }
-            )
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            # Generate OTP
+            otp = generate_otp()
+
+            # Save to DB
+            AdminOTP.objects.create(admin=admin, otp=otp)
+
+            # Send email
+            send_admin_otp_email(admin, otp)
+
+            return Response({"message": "OTP sent to admin email", "admin_email": admin.email})
+
+        return Response(serializer.errors, status=400)
+
+
+class AdminVerifyOTPAPIView(APIView):
+    def post(self, request):
+        serializer = AdminOTPVerifySerializer(data=request.data)
+        if serializer.is_valid():
+
+            email = serializer.validated_data["email"]
+            otp = serializer.validated_data["otp"]
+
+            try:
+                admin_user = User.objects.get(email=email, is_staff=True)
+            except User.DoesNotExist:
+                return Response({"error": "Admin not found"}, status=404)
+
+            try:
+                latest_otp = AdminOTP.objects.filter(admin=admin_user).latest("created_at")
+            except AdminOTP.DoesNotExist:
+                return Response({"error": "OTP not generated"}, status=400)
+
+            # Check OTP expiry
+            if latest_otp.is_expired():
+                return Response({"error": "OTP expired"}, status=400)
+
+            # Check OTP match
+            if latest_otp.otp != otp:
+                return Response({"error": "Invalid OTP"}, status=400)
+
+            # If success → create JWT
+            tokens = generate_tokens(admin_user)
+
+            return Response({
+                "message": "OTP verified successfully",
+                "tokens": tokens
+            })
+
+        return Response(serializer.errors, status=400)
+
+
+class AdminUpdateEmailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def put(self, request):
+        serializer = AdminEmailChangeSerializer(data=request.data)
+        if serializer.is_valid():
+            new_email = serializer.validated_data["new_email"]
+
+            admin = request.user
+            admin.email = new_email
+            admin.username = new_email   # if username = email
+            admin.save()
+
+            return Response({"message": "Email updated successfully", "new_email": new_email})
+
+        return Response(serializer.errors, status=400)
+
+
+class AdminChangePasswordAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def put(self, request):
+        serializer = AdminPasswordChangeSerializer(data=request.data, context={"request": request})
+        if serializer.is_valid():
+            admin = request.user
+            admin.set_password(serializer.validated_data["new_password"])
+            admin.save()
+
+            return Response({"message": "Password updated successfully"})
+
+        return Response(serializer.errors, status=400)
+
 
 
 class AdminTestAPIView(APIView):
@@ -207,7 +287,18 @@ class AdminProductDetailAPIView(APIView):
             status=status.HTTP_200_OK,
         )
 
+class AdminDeleteProductImageAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
 
+    def delete(self, request, image_id):
+        try:
+            img = ProductImage.objects.get(id=image_id)
+        except ProductImage.DoesNotExist:
+            return Response({"error": "Image not found"}, status=404)
+
+        img.delete()
+        return Response({"message": "Image deleted"}, status=200)
+        
 # -----------------------------
 # ORDER MANAGEMENT
 # -----------------------------
