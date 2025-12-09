@@ -1,15 +1,20 @@
 import logging
+
 from django.db.models import Sum
-from django.utils.timezone import now
 from django.core.cache import cache
+from django.utils.timezone import now
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.db.models import Sum, Q
+
 from .permissions import IsAdminUserCustom
-from .models import SiteSettings
+from .models import SiteSettings, AdminOTP
 from .serializers import *
+from .utils_email import send_admin_otp_email, generate_otp
+
 from users.models import User
 from categories.models import Category
 from categories.serializers import CategorySerializer
@@ -18,9 +23,6 @@ from products.serializers import ProductSerializer
 from orders.models import Order, OrderItem
 from coupons.models import Coupon
 from coupons.serializers import AdminCouponSerializer
-from .utils_email import send_admin_login_alert
-
-
 
 logger = logging.getLogger(__name__)
 
@@ -33,34 +35,30 @@ def generate_tokens(user):
     }
 
 
-from .models import AdminOTP
-from .utils_email import send_admin_otp_email, generate_otp
-
+# -----------------------------
+# ADMIN AUTH + PROFILE
+# -----------------------------
 class AdminLoginAPIView(APIView):
     def post(self, request):
         serializer = AdminLoginSerializer(data=request.data)
         if serializer.is_valid():
             admin = serializer.validated_data
 
-            # Generate OTP
             otp = generate_otp()
-
-            # Save to DB
             AdminOTP.objects.create(admin=admin, otp=otp)
-
-            # Send email
             send_admin_otp_email(admin, otp)
 
-            return Response({"message": "OTP sent to admin email", "admin_email": admin.email})
+            return Response(
+                {"message": "OTP sent to admin email", "admin_email": admin.email}
+            )
 
-        return Response(serializer.errors, status=400)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AdminVerifyOTPAPIView(APIView):
     def post(self, request):
         serializer = AdminOTPVerifySerializer(data=request.data)
         if serializer.is_valid():
-
             email = serializer.validated_data["email"]
             otp = serializer.validated_data["otp"]
 
@@ -70,25 +68,26 @@ class AdminVerifyOTPAPIView(APIView):
                 return Response({"error": "Admin not found"}, status=404)
 
             try:
-                latest_otp = AdminOTP.objects.filter(admin=admin_user).latest("created_at")
+                latest_otp = AdminOTP.objects.filter(admin=admin_user).latest(
+                    "created_at"
+                )
             except AdminOTP.DoesNotExist:
                 return Response({"error": "OTP not generated"}, status=400)
 
-            # Check OTP expiry
             if latest_otp.is_expired():
                 return Response({"error": "OTP expired"}, status=400)
 
-            # Check OTP match
             if latest_otp.otp != otp:
                 return Response({"error": "Invalid OTP"}, status=400)
 
-            # If success → create JWT
             tokens = generate_tokens(admin_user)
 
-            return Response({
-                "message": "OTP verified successfully",
-                "tokens": tokens
-            })
+            return Response(
+                {
+                    "message": "OTP verified successfully",
+                    "tokens": tokens,
+                }
+            )
 
         return Response(serializer.errors, status=400)
 
@@ -103,10 +102,12 @@ class AdminUpdateEmailAPIView(APIView):
 
             admin = request.user
             admin.email = new_email
-            admin.username = new_email   # if username = email
+            admin.username = new_email  # if username = email
             admin.save()
 
-            return Response({"message": "Email updated successfully", "new_email": new_email})
+            return Response(
+                {"message": "Email updated successfully", "new_email": new_email}
+            )
 
         return Response(serializer.errors, status=400)
 
@@ -115,16 +116,33 @@ class AdminChangePasswordAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 
     def put(self, request):
-        serializer = AdminPasswordChangeSerializer(data=request.data, context={"request": request})
+        serializer = AdminPasswordChangeSerializer(
+            data=request.data, context={"request": request}
+        )
         if serializer.is_valid():
             admin = request.user
             admin.set_password(serializer.validated_data["new_password"])
             admin.save()
-
             return Response({"message": "Password updated successfully"})
 
         return Response(serializer.errors, status=400)
 
+
+class AdminUsersListAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        users = User.objects.filter(is_staff=False).order_by("-id")
+        data = [
+            {
+                "id": u.id,
+                "name": u.name,
+                "email": u.email,
+                "created_at": u.created_at,
+            }
+            for u in users
+        ]
+        return Response(data)
 
 
 class AdminTestAPIView(APIView):
@@ -171,7 +189,9 @@ class AdminCategoryDetailAPIView(APIView):
     def get(self, request, pk):
         category = self.get_object(pk)
         if not category:
-            return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
         serializer = CategorySerializer(category, context={"request": request})
         return Response(serializer.data)
@@ -179,7 +199,9 @@ class AdminCategoryDetailAPIView(APIView):
     def put(self, request, pk):
         category = self.get_object(pk)
         if not category:
-            return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
         serializer = CategorySerializer(
             category,
@@ -196,7 +218,9 @@ class AdminCategoryDetailAPIView(APIView):
     def delete(self, request, pk):
         category = self.get_object(pk)
         if not category:
-            return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
         category.delete()
         return Response(
@@ -287,6 +311,7 @@ class AdminProductDetailAPIView(APIView):
             status=status.HTTP_200_OK,
         )
 
+
 class AdminDeleteProductImageAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 
@@ -298,7 +323,8 @@ class AdminDeleteProductImageAPIView(APIView):
 
         img.delete()
         return Response({"message": "Image deleted"}, status=200)
-        
+
+
 # -----------------------------
 # ORDER MANAGEMENT
 # -----------------------------
@@ -384,47 +410,68 @@ class AdminSiteSettingsAPIView(APIView):
 # -----------------------------
 # DASHBOARD STATS + CACHE
 # -----------------------------
+
 class AdminDashboardStatsAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 
     def get(self, request):
+        # Try cache first
         cached_data = cache.get("admin_dashboard_stats")
         if cached_data:
-            logger.info("Dashboard data served from CACHE")
             return Response(cached_data)
 
-        logger.info("Dashboard data generated FRESH")
-
-        total_users = User.objects.count()
+        # Summary stats
+        total_users = User.objects.filter(is_staff=False).count()
         total_orders = Order.objects.count()
 
         total_revenue = (
-            Order.objects.filter(payment_status__in=["PAID", "COD"])
+            Order.objects.filter(
+                Q(payment_status="PAID") |
+                Q(payment_status="COD", status="DELIVERED")
+            )
             .aggregate(total=Sum("total_amount"))["total"]
             or 0
         )
 
         today = now().date()
+
         todays_orders = Order.objects.filter(created_at__date=today).count()
 
         todays_revenue = (
             Order.objects.filter(
-                created_at__date=today,
-                payment_status__in=["PAID", "COD"],
-            ).aggregate(total=Sum("total_amount"))["total"]
+                created_at__date=today
+            )
+            .filter(
+                Q(payment_status="PAID") |
+                Q(payment_status="COD", status="DELIVERED")
+            )
+            .aggregate(total=Sum("total_amount"))["total"]
             or 0
         )
 
         pending_orders = Order.objects.filter(status="PENDING").count()
         delivered_orders = Order.objects.filter(status="DELIVERED").count()
 
+        # BEST SELLERS — product info + single image
         best_sellers = (
-            OrderItem.objects.values("product_id", "product__name")
+            OrderItem.objects.values(
+                "product_id",
+                "product__name",
+                "product__price",
+                "product__sale_price",
+            )
             .annotate(total_sold=Sum("quantity"))
             .order_by("-total_sold")[:5]
         )
 
+        # Attach image manually for each product
+        for item in best_sellers:
+            from products.models import ProductImage
+            img = ProductImage.objects.filter(product_id=item["product_id"]).first()
+            item["image"] = img.image.url if img else None
+
         LOW_STOCK_THRESHOLD = 5
+
         low_stock_count = Product.objects.filter(
             is_active=True, stock__lte=LOW_STOCK_THRESHOLD
         ).count()
@@ -450,8 +497,8 @@ class AdminDashboardStatsAPIView(APIView):
         }
 
         cache.set("admin_dashboard_stats", data, timeout=60)
-
         return Response(data)
+
 
 
 class AdminLowStockProductsAPIView(APIView):
@@ -487,8 +534,10 @@ class AdminLowStockProductsAPIView(APIView):
             }
         )
 
-#coupon manage
 
+# -----------------------------
+# COUPON MANAGEMENT
+# -----------------------------
 class AdminCouponListCreateAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 
@@ -501,8 +550,11 @@ class AdminCouponListCreateAPIView(APIView):
         serializer = AdminCouponSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Coupon created", "data": serializer.data}, status=201)
+            return Response(
+                {"message": "Coupon created", "data": serializer.data}, status=201
+            )
         return Response(serializer.errors, status=400)
+
 
 class AdminCouponDetailAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
@@ -529,7 +581,9 @@ class AdminCouponDetailAPIView(APIView):
         serializer = AdminCouponSerializer(coupon, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Coupon updated", "data": serializer.data})
+            return Response(
+                {"message": "Coupon updated", "data": serializer.data}
+            )
 
         return Response(serializer.errors, status=400)
 

@@ -167,17 +167,21 @@ REST_FRAMEWORK = {
         "anon": "100/day",
         "user": "1000/day",
         "otp": "5/min",
-        "admin_login": "5/min",
+        "admin_login": "50/min",
     }
 }
 
 
 
 SIMPLE_JWT = {
-    "BLACKLIST_AFTER_ROTATION": True,
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=365),  # Admin token valid 15 min
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=365),     # Login lasts 7 days
     "ROTATE_REFRESH_TOKENS": True,
-   
+    "BLACKLIST_AFTER_ROTATION": True,
+
+    "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
 
 CACHES = {
     "default": {
