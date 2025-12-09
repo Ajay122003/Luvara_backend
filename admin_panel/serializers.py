@@ -59,7 +59,6 @@ class AdminProductCreateSerializer(serializers.ModelSerializer):
         return product
 
     def update(self, instance, validated_data):
-        # Handle basic fields
         images = validated_data.pop("images", None)
 
         for attr, value in validated_data.items():
@@ -125,7 +124,15 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
     def get_address_details(self, obj):
         if not obj.address:
             return None
-        return AddressSerializer(obj.address).data
+        a = obj.address
+        return {
+            "name": a.name,
+            "phone": a.phone,
+            "pincode": a.pincode,
+            "city": a.city,
+            "state": a.state,
+            "full_address": a.full_address,
+        }
 
 
 class SiteSettingsSerializer(serializers.ModelSerializer):
@@ -145,12 +152,14 @@ class AdminEmailChangeSerializer(serializers.Serializer):
 
 class AdminPasswordChangeSerializer(serializers.Serializer):
     old_password = serializers.CharField()
-    new_password = serializers.CharField(min_length=6)
+    new_password = serializers.CharField(min_length=10)
 
     def validate(self, data):
         user = self.context["request"].user
         if not user.check_password(data["old_password"]):
-            raise serializers.ValidationError({"old_password": "Incorrect old password"})
+            raise serializers.ValidationError(
+                {"old_password": "Incorrect old password"}
+            )
         return data
 
 

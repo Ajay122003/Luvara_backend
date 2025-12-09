@@ -27,36 +27,6 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 
-# class VerifyOTPSerializer(serializers.Serializer):
-#     email = serializers.EmailField()
-#     otp = serializers.CharField(max_length=6)
-
-#     def validate(self, data):
-#         email = data["email"]
-#         otp = data["otp"]
-
-#         try:
-#             user = User.objects.get(email=email)
-#         except User.DoesNotExist:
-#             raise serializers.ValidationError("User not found")
-
-#         try:
-#             otp_obj = EmailOTP.objects.filter(user=user).latest("created_at")
-#         except EmailOTP.DoesNotExist:
-#             raise serializers.ValidationError("OTP not found")
-
-#         if otp_obj.is_expired():
-#             raise serializers.ValidationError("OTP expired")
-
-#         if otp_obj.otp != otp:
-#             raise serializers.ValidationError("Invalid OTP")
-
-#         # Mark user verified
-#         user.is_email_verified = True
-#         user.save()
-
-#         return data
-
 
 
 class LoginSerializer(serializers.Serializer):
