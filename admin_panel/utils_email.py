@@ -8,40 +8,97 @@ def generate_otp():
 
 
 def send_admin_otp_email(admin_user, otp):
-    subject = "🔐 Your Admin Login OTP"
+    subject = " Luvara Admin Login OTP"
 
     text_message = f"Your OTP is: {otp}"
 
+    # ======================= PREMIUM HTML EMAIL ===========================
     html_message = f"""
-    <div style="font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa;">
-        <div style="max-width: 500px; margin: auto; background: white; padding: 25px; 
-                    border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.08);">
-            
-            <h2 style="text-align:center; color:#333;">Admin Login Verification</h2>
-            <p style="font-size:15px; color:#555;">
-                Hello {admin_user.email},<br><br>
-                Your One-Time Password (OTP) for admin login is:
-            </p>
+    <div style="background:#f4f4f4; padding:40px 0; font-family:'Segoe UI', sans-serif;">
+      <div style="
+          max-width:520px; 
+          margin:auto; 
+          background:#ffffff; 
+          padding:35px; 
+          border-radius:14px; 
+          box-shadow:0 8px 30px rgba(0,0,0,0.08);
+      ">
+        
+        <!-- BRAND -->
+        <h1 style="
+            text-align:center; 
+            font-size:26px; 
+            font-weight:800; 
+            letter-spacing:2px; 
+            color:#000;
+            margin-bottom:5px;
+        ">
+          LUVARA ADMIN
+        </h1>
 
-            <div style="text-align:center; margin: 25px 0;">
-                <span style="font-size:28px; letter-spacing: 4px; font-weight: bold; 
-                             color: #d6336c; padding: 10px 20px; border: 2px dashed #d6336c;
-                             display:inline-block; border-radius: 8px;">
-                    {otp}
-                </span>
-            </div>
+        <p style="
+            text-align:center; 
+            color:#777; 
+            font-size:13px; 
+            margin-top:-5px;
+        ">
+          Secure Login Verification
+        </p>
 
-            <p style="font-size:14px; color:#777;">
-                This OTP is valid for <b>5 minutes</b>.<br>
-                If you did not request this login, please secure your account immediately.
-            </p>
+        <!-- TITLE -->
+        <h2 style="
+            text-align:center; 
+            margin:25px 0 10px; 
+            font-size:20px; 
+            color:#111; 
+            font-weight:600;
+        ">
+          Your Login OTP Code
+        </h2>
 
-            <p style="font-size:12px; color:#aaa; text-align:center; margin-top: 30px;">
-                © {settings.DEFAULT_FROM_EMAIL} • Admin Security
-            </p>
+        <!-- MESSAGE -->
+        <p style="font-size:15px; color:#444; line-height:1.7;">
+          Hello <b>{admin_user.email}</b>,<br>
+          To proceed with your admin login, please use the secure One-Time Password (OTP) provided below.
+        </p>
+
+        <!-- OTP BOX -->
+        <div style="text-align:center; margin:35px 0;">
+          <div style="
+              display:inline-block;
+              background:#000;
+              padding:18px 28px;
+              border-radius:12px;
+              color:#fff;
+              font-weight:800;
+              font-size:34px;
+              letter-spacing:10px;
+              border:2px solid #000;
+          ">
+            {otp}
+          </div>
         </div>
+
+        <!-- INFO -->
+        <p style="font-size:14px; color:#666; line-height:1.6;">
+          This OTP is valid for <b>5 minutes</b>.<br>
+          If you did not request this login attempt, please change your admin password immediately and review security activity.
+        </p>
+
+        <!-- FOOTER -->
+        <div style="text-align:center; margin-top:40px;">
+          <p style="font-size:12px; color:#aaa; margin-bottom:5px;">
+            © 2025 Luvara Store • Admin Security System
+          </p>
+          <p style="font-size:11px; color:#bbb;">
+            This is an automated security alert. Do not reply to this email.
+          </p>
+        </div>
+
+      </div>
     </div>
     """
+    # ======================================================================
 
     email = EmailMultiAlternatives(
         subject,

@@ -7,23 +7,18 @@ from .otp_utils import check_otp_rate_limit
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["email", "password", "username"]
+        fields = ["email", "username", "password"]
         extra_kwargs = {"password": {"write_only": True}}
 
     def create(self, validated_data):
-        email = validated_data["email"]
-        password = validated_data["password"]
-        username = validated_data["username"]
-
         user = User.objects.create_user(
-            email=email,
-            username=username,
-            password=password,
-            is_email_verified=False,
+            email=validated_data["email"],
+            username=validated_data["username"],
+            password=validated_data["password"]
         )
-
+        user.is_email_verified = False
+        user.save()
         return user
-
 
 
 
