@@ -14,7 +14,7 @@ from .permissions import IsAdminUserCustom
 from .models import SiteSettings, AdminOTP
 from .serializers import *
 from .utils_email import send_admin_otp_email, generate_otp
-
+from subscriptions.models import Subscriber
 from users.models import User
 from categories.models import Category
 from categories.serializers import CategorySerializer
@@ -127,22 +127,20 @@ class AdminChangePasswordAPIView(APIView):
 
         return Response(serializer.errors, status=400)
 
-
-class AdminUsersListAPIView(APIView):
+class AdminUserListView(APIView):
     permission_classes = [IsAdminUserCustom]
 
     def get(self, request):
-        users = User.objects.filter(is_staff=False).order_by("-id")
-        data = [
-            {
-                "id": u.id,
-                "name": u.name,
-                "email": u.email,
-                "created_at": u.created_at,
-            }
-            for u in users
-        ]
-        return Response(data)
+        users = User.objects.all().values("id", "email", "username", "date_joined")
+        return Response(users)
+
+
+class AdminSubscriptionListView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        subs = Subscriber.objects.all().values("id", "email", "created_at")
+        return Response(subs)
 
 
 class AdminTestAPIView(APIView):

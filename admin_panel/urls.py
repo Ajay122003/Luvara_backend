@@ -6,7 +6,9 @@ urlpatterns = [
     path("login/", AdminLoginAPIView.as_view()),
     path("verify-otp/", AdminVerifyOTPAPIView.as_view()),
     path("test/", AdminTestAPIView.as_view()),
-    path("users/", AdminUsersListAPIView.as_view()),
+    path("users/", AdminUserListView.as_view()),
+    path("subscriptions/", AdminSubscriptionListView.as_view()),
+
 
 
     # Profile

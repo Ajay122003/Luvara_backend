@@ -23,7 +23,8 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 
     # API routes
-    path("api/auth/", include("users.urls")),            # users app la create pannuvom
+    path("api/auth/", include("users.urls")),
+    path("api/", include("subscriptions.urls")),
     path("api/categories/", include("categories.urls")),
     path("api/products/", include("products.urls")),
     path("api/cart/", include("cart.urls")),
