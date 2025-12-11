@@ -19,6 +19,11 @@ urlpatterns = [
     path("categories/", AdminCategoryListCreateAPIView.as_view()),
     path("categories/<int:pk>/", AdminCategoryDetailAPIView.as_view()),
 
+    # Collections
+    path("collections/", AdminCollectionListCreateAPIView.as_view()),
+    path("collections/<int:pk>/", AdminCollectionDetailAPIView.as_view()),
+
+
     # Product
     path("products/", AdminProductListCreateAPIView.as_view()),
     path("products/<int:pk>/", AdminProductDetailAPIView.as_view()),

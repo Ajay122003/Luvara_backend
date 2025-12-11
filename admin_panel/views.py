@@ -18,6 +18,8 @@ from subscriptions.models import Subscriber
 from users.models import User
 from categories.models import Category
 from categories.serializers import CategorySerializer
+from product_collections.models import Collection
+from product_collections.serializers import CollectionListSerializer
 from products.models import Product, ProductImage
 from products.serializers import ProductSerializer
 from orders.models import Order, OrderItem
@@ -226,6 +228,72 @@ class AdminCategoryDetailAPIView(APIView):
             status=status.HTTP_200_OK,
         )
 
+
+# -----------------------------
+# PRODUCT MANAGEMENT
+# -----------------------------
+
+class AdminCollectionListCreateAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        collections = Collection.objects.all().order_by("sort_order", "name")
+        serializer = CollectionListSerializer(
+            collections, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = CollectionListSerializer(
+            data=request.data, context={"request": request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class AdminCollectionDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_object(self, pk):
+        try:
+            return Collection.objects.get(pk=pk)
+        except Collection.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        collection = self.get_object(pk)
+        if not collection:
+            return Response({"error": "Collection not found"}, status=404)
+
+        serializer = CollectionListSerializer(collection, context={"request": request})
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        collection = self.get_object(pk)
+        if not collection:
+            return Response({"error": "Collection not found"}, status=404)
+
+        serializer = CollectionListSerializer(
+            collection, data=request.data, partial=True, context={"request": request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+
+        return Response(serializer.errors, status=400)
+
+    def delete(self, request, pk):
+        collection = self.get_object(pk)
+        if not collection:
+            return Response({"error": "Collection not found"}, status=404)
+
+        collection.delete()
+        return Response({"message": "Collection deleted successfully"}, status=200)
+    
 
 # -----------------------------
 # PRODUCT MANAGEMENT
