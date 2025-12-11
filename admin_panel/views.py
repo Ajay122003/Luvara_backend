@@ -422,6 +422,8 @@ class AdminDashboardStatsAPIView(APIView):
         total_users = User.objects.filter(is_staff=False).count()
         total_orders = Order.objects.count()
 
+        total_subscribers = Subscriber.objects.count()
+
         total_revenue = (
             Order.objects.filter(
                 Q(payment_status="PAID") |
@@ -492,6 +494,7 @@ class AdminDashboardStatsAPIView(APIView):
             "total_products": total_products,
             "active_products": active_products,
             "total_categories": total_categories,
+            "total_subscribers": total_subscribers,
         }
 
         cache.set("admin_dashboard_stats", data, timeout=60)
