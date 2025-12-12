@@ -17,14 +17,14 @@ from .utils_email import send_admin_otp_email, generate_otp
 from subscriptions.models import Subscriber
 from users.models import User
 from categories.models import Category
-from categories.serializers import CategorySerializer
+from categories.serializers import *
 from product_collections.models import Collection
-from product_collections.serializers import CollectionListSerializer
+from product_collections.serializers import *
 from products.models import Product, ProductImage
-from products.serializers import ProductSerializer
+from products.serializers import *
 from orders.models import Order, OrderItem
 from coupons.models import Coupon
-from coupons.serializers import AdminCouponSerializer
+from coupons.serializers import *
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +230,7 @@ class AdminCategoryDetailAPIView(APIView):
 
 
 # -----------------------------
-# PRODUCT MANAGEMENT
+# collection MANAGEMENT
 # -----------------------------
 
 class AdminCollectionListCreateAPIView(APIView):
@@ -245,12 +245,16 @@ class AdminCollectionListCreateAPIView(APIView):
         return Response(serializer.data)
 
     def post(self, request):
-        serializer = CollectionListSerializer(
-            data=request.data, context={"request": request}
+        serializer = CollectionCreateUpdateSerializer(
+            data=request.data,
+            context={"request": request}
         )
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
+            instance = serializer.save()
+            return Response(
+                CollectionListSerializer(instance, context={"request": request}).data,
+                status=201
+            )
         return Response(serializer.errors, status=400)
 
 
@@ -277,13 +281,17 @@ class AdminCollectionDetailAPIView(APIView):
         if not collection:
             return Response({"error": "Collection not found"}, status=404)
 
-        serializer = CollectionListSerializer(
-            collection, data=request.data, partial=True, context={"request": request}
+        serializer = CollectionCreateUpdateSerializer(
+            collection,
+            data=request.data,
+            partial=True,
+            context={"request": request}
         )
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-
+            instance = serializer.save()
+            return Response(
+                CollectionListSerializer(instance, context={"request": request}).data
+            )
         return Response(serializer.errors, status=400)
 
     def delete(self, request, pk):
@@ -293,8 +301,6 @@ class AdminCollectionDetailAPIView(APIView):
 
         collection.delete()
         return Response({"message": "Collection deleted successfully"}, status=200)
-    
-
 # -----------------------------
 # PRODUCT MANAGEMENT
 # -----------------------------
@@ -310,15 +316,19 @@ class AdminProductListCreateAPIView(APIView):
         return Response(serializer.data)
 
     def post(self, request):
-        serializer = AdminProductCreateSerializer(data=request.data)
+        serializer = ProductCreateSerializer(
+            data=request.data,
+            context={"request": request}   # ⭐ VERY IMPORTANT
+        )
+
         if serializer.is_valid():
             product = serializer.save()
             return Response(
                 ProductSerializer(product, context={"request": request}).data,
-                status=status.HTTP_201_CREATED,
+                status=201
             )
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=400)
 
 
 class AdminProductDetailAPIView(APIView):

@@ -18,7 +18,7 @@ class CategorySerializer(serializers.ModelSerializer):
             "image_url",
             "is_active",
             "sort_order",
-            "products",  # ✅ FRONTEND USES THIS
+            "products",  #  FRONTEND USES THIS
         ]
 
     def get_image_url(self, obj):
