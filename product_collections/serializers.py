@@ -1,8 +1,10 @@
 from rest_framework import serializers
 from .models import Collection
+from products.models import Product
 from products.serializers import ProductSerializer
 
 
+# LIST SERIALIZER (ADMIN + FRONTEND)
 class CollectionListSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     product_count = serializers.SerializerMethodField()
@@ -17,6 +19,7 @@ class CollectionListSerializer(serializers.ModelSerializer):
             "image",
             "image_url",
             "is_active",
+            "sort_order",
             "product_count",
         ]
 
@@ -27,13 +30,13 @@ class CollectionListSerializer(serializers.ModelSerializer):
         return None
 
     def get_product_count(self, obj):
-        # Efficient count query
         return obj.products.filter(is_active=True).count()
 
 
+# DETAIL SERIALIZER (USER SIDE)
 class CollectionDetailSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
-    products = serializers.SerializerMethodField()  # custom to optimize loading
+    products = serializers.SerializerMethodField()
 
     class Meta:
         model = Collection
@@ -45,6 +48,7 @@ class CollectionDetailSerializer(serializers.ModelSerializer):
             "image",
             "image_url",
             "is_active",
+            "sort_order",
             "products",
         ]
 
@@ -55,10 +59,29 @@ class CollectionDetailSerializer(serializers.ModelSerializer):
         return None
 
     def get_products(self, obj):
-        from products.models import Product
+        qs = obj.products.filter(is_active=True)
+        return ProductSerializer(qs, many=True, context=self.context).data
 
-        queryset = obj.products.filter(is_active=True).order_by("-id")
-        serializer = ProductSerializer(
-            queryset, many=True, context=self.context
-        )
-        return serializer.data
+class CollectionCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Collection
+        fields = [
+            "name",
+            "slug",
+            "description",
+            "image",
+            "is_active",
+            "sort_order",
+        ]
+        extra_kwargs = {
+            "slug": {"required": False},
+        }
+
+    def create(self, validated_data):
+        return Collection.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        for key, value in validated_data.items():
+            setattr(instance, key, value)
+        instance.save()
+        return instance

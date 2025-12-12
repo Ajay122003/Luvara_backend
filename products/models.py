@@ -5,11 +5,7 @@ from product_collections.models import Collection   # IMPORT COLLECTION
 class Product(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="products")
 
-    collections = models.ManyToManyField(
-        Collection,
-        related_name="products",
-        blank=True
-    )
+    collections = models.ManyToManyField( Collection, related_name="products", blank=True)
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
