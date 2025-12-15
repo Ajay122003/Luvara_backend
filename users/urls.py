@@ -8,4 +8,6 @@ urlpatterns = [
     path("login/", LoginView.as_view()),   # if you keep password login
     path("me/", MeView.as_view()),
     path("logout/", LogoutView.as_view()),
+    path("me/update/", UpdateProfileView.as_view()),
+
 ]
