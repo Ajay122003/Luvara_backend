@@ -106,3 +106,9 @@ class LoginOTPVerifySerializer(serializers.Serializer):
 
         data["user"] = user
         return data
+    
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["username"]

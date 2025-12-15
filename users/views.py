@@ -107,3 +107,21 @@ class LogoutView(APIView):
             return Response({"error": "Invalid or expired token"}, status=400)
 
         return Response({"message": "Logged out successfully"}, status=205)
+
+
+class UpdateProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request):
+        serializer = ProfileUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "Profile updated successfully"},
+                status=200
+            )
+        return Response(serializer.errors, status=400)
