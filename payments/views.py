@@ -1,13 +1,15 @@
+import razorpay
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.conf import settings
-
+import hmac
+import hashlib
 from .razorpay_client import razorpay_client
 from .serializers import CreateRazorpayOrderSerializer, VerifyPaymentSerializer
 from orders.models import Order
-import razorpay
+
 
 
 class CreateRazorpayOrderAPIView(APIView):
@@ -131,3 +133,54 @@ class VerifyRazorpayPaymentAPIView(APIView):
             },
             status=200,
         )
+
+
+class RazorpayWebhookAPIView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        payload = request.body
+        received_signature = request.headers.get(
+            "X-Razorpay-Signature"
+        )
+
+        secret = settings.RAZORPAY_WEBHOOK_SECRET
+
+        expected_signature = hmac.new(
+            key=bytes(secret, "utf-8"),
+            msg=payload,
+            digestmod=hashlib.sha256,
+        ).hexdigest()
+
+        if received_signature != expected_signature:
+            return Response({"error": "Invalid signature"}, status=400)
+
+        data = request.data
+        event = data.get("event")
+
+        #  PAYMENT SUCCESS
+        if event == "payment.captured":
+            payment = data["payload"]["payment"]["entity"]
+            razorpay_order_id = payment["order_id"]
+
+            try:
+                order = Order.objects.get(payment_id=razorpay_order_id)
+                order.payment_status = "PAID"
+                order.save()
+            except Order.DoesNotExist:
+                pass
+
+        #  PAYMENT FAILED
+        if event == "payment.failed":
+            payment = data["payload"]["payment"]["entity"]
+            razorpay_order_id = payment["order_id"]
+
+            try:
+                order = Order.objects.get(payment_id=razorpay_order_id)
+                order.payment_status = "FAILED"
+                order.save()
+            except Order.DoesNotExist:
+                pass
+
+        return Response({"status": "ok"})

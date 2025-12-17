@@ -16,7 +16,7 @@ def generate_invoice_pdf(order):
 
     y = height - 40
 
-    # ---- HEADER ----
+    # ================= HEADER =================
     c.setFont("Helvetica-Bold", 16)
     c.drawString(30, y, "ORDER INVOICE")
     y -= 30
@@ -24,11 +24,10 @@ def generate_invoice_pdf(order):
     c.setFont("Helvetica", 12)
     c.drawString(30, y, f"Order Number: {order.order_number}")
     y -= 20
-
     c.drawString(30, y, f"Order Date: {order.created_at.strftime('%d-%m-%Y')}")
     y -= 30
 
-    # ---- BILLING ADDRESS ----
+    # ================= BILLING ADDRESS =================
     address = order.address
     if address:
         c.setFont("Helvetica-Bold", 14)
@@ -36,18 +35,18 @@ def generate_invoice_pdf(order):
         y -= 20
 
         c.setFont("Helvetica", 12)
-        c.drawString(30, y, f"{address.name}")
+        c.drawString(30, y, address.name)
         y -= 18
-        c.drawString(30, y, f"{address.phone}")
+        c.drawString(30, y, address.phone)
         y -= 18
-        c.drawString(30, y, f"{address.full_address}")
+        c.drawString(30, y, address.full_address)
         y -= 18
         c.drawString(30, y, f"{address.city}, {address.state}")
         y -= 18
         c.drawString(30, y, f"Pincode: {address.pincode}")
         y -= 40
 
-    # ---- ORDER ITEMS ----
+    # ================= ORDER ITEMS =================
     c.setFont("Helvetica-Bold", 14)
     c.drawString(30, y, "Items:")
     y -= 25
@@ -64,36 +63,50 @@ def generate_invoice_pdf(order):
     for item in order.items.all():
         total = item.price * item.quantity
 
-        c.drawString(30, y, (item.product.name[:25] if item.product else "N/A"))
+        c.drawString(30, y, item.product.name[:25] if item.product else "N/A")
         c.drawString(250, y, str(item.quantity))
-        c.drawString(300, y, f"{item.price}")
-        c.drawString(380, y, f"{total}")
+        c.drawString(300, y, f"₹{item.price}")
+        c.drawString(380, y, f"₹{total}")
 
         y -= 20
-
         if y < 100:
             c.showPage()
             y = height - 100
 
-    # ---- PRICE SUMMARY ----
-    y -= 20
+    # ================= PRICE SUMMARY =================
+    y -= 30
     c.setFont("Helvetica-Bold", 12)
 
-    subtotal = order.total_amount + order.discount_amount
-
     c.drawString(300, y, "Subtotal:")
-    c.drawString(380, y, f"{subtotal}")
+    c.drawString(380, y, f"₹{order.subtotal_amount}")
     y -= 20
 
     c.drawString(300, y, "Discount:")
-    c.drawString(380, y, f"-{order.discount_amount}")
+    c.drawString(380, y, f"-₹{order.discount_amount}")
+    y -= 20
+
+    c.drawString(300, y, "Shipping:")
+    c.drawString(380, y, f"₹{order.shipping_amount}")
+    y -= 20
+
+    # Taxable amount (Product + Shipping – Discount)
+    taxable_amount = (
+        order.subtotal_amount - order.discount_amount + order.shipping_amount
+    )
+
+    c.drawString(300, y, "Taxable Amount:")
+    c.drawString(380, y, f"₹{taxable_amount}")
+    y -= 20
+
+    c.drawString(300, y, f"GST ({order.gst_percentage}%):")
+    c.drawString(380, y, f"₹{order.gst_amount}")
     y -= 20
 
     c.drawString(300, y, "Final Total:")
-    c.drawString(380, y, f"{order.total_amount}")
+    c.drawString(380, y, f"₹{order.total_amount}")
     y -= 40
 
-    # ---- FOOTER ----
+    # ================= FOOTER =================
     c.setFont("Helvetica-Oblique", 11)
     c.drawString(30, y, "Thank you for shopping with us!")
 

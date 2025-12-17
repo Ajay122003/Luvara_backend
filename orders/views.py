@@ -22,9 +22,9 @@ class OrderCreateAPIView(APIView):
     def post(self, request):
         settings_obj = SiteSettings.objects.first()
 
-        payment_method = request.data.get("payment_method", "ONLINE")  # default = ONLINE
+        payment_method = request.data.get("payment_method", "ONLINE")
 
-        # -------- COD availability check --------
+        # ---------- COD availability ----------
         if payment_method == "COD":
             if not settings_obj or not settings_obj.enable_cod:
                 return Response(
@@ -39,15 +39,15 @@ class OrderCreateAPIView(APIView):
         if serializer.is_valid():
             order = serializer.save()
 
-            # Payment status
+            # ---------- Payment status ----------
             if payment_method == "COD":
                 order.payment_status = "COD"
             else:
-                order.payment_status = "PENDING"  # Razorpay pending
+                order.payment_status = "PENDING"  # Razorpay
 
             order.save()
 
-            # Generate invoice + send email
+            # ---------- Invoice + Email ----------
             pdf_path = generate_invoice_pdf(order)
             send_order_invoice_email(order, pdf_path)
 
@@ -56,9 +56,15 @@ class OrderCreateAPIView(APIView):
                     "message": "Order created successfully",
                     "order_id": order.id,
                     "order_number": order.order_number,
-                    "subtotal": float(serializer.validated_data["subtotal"]),
-                    "discount": float(serializer.validated_data["discount"]),
+
+                    # ---- PRICE BREAKUP ----
+                    "subtotal": float(order.subtotal_amount),
+                    "discount": float(order.discount_amount),
+                    "shipping": float(order.shipping_amount),
+                    "gst_percentage": float(order.gst_percentage),
+                    "gst_amount": float(order.gst_amount),
                     "total_amount": float(order.total_amount),
+
                     "payment_status": order.payment_status,
                     "coupon_code": request.data.get("coupon_code", "").strip()
                     or None,
@@ -89,7 +95,7 @@ class UserOrderDetailAPIView(APIView):
 
         serializer = OrderDetailSerializer(order)
 
-        # Fetch admin settings
+        # ---------- Admin settings ----------
         settings_obj = SiteSettings.objects.first()
         if not settings_obj:
             settings_obj = SiteSettings.objects.create()
@@ -133,7 +139,7 @@ class CancelOrderAPIView(APIView):
         order.status = "CANCELLED"
         order.save()
 
-        # Restore stock
+        # ---------- Restore stock ----------
         for item in order.items.all():
             if item.product:
                 item.product.stock += item.quantity
