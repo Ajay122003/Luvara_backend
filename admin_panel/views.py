@@ -1,5 +1,5 @@
 import logging
-
+from rest_framework.permissions import AllowAny
 from django.db.models import Sum
 from django.core.cache import cache
 from django.utils.timezone import now
@@ -481,6 +481,26 @@ class AdminSiteSettingsAPIView(APIView):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class PublicSiteSettingsAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        settings = SiteSettings.objects.first()
+
+        if not settings:
+            return Response({
+                "enable_cod": False,
+                "shipping_charge": 0,
+                "free_shipping_min_amount": 0,
+            })
+
+        return Response({
+            "enable_cod": settings.enable_cod,
+            "shipping_charge": settings.shipping_charge,
+            "free_shipping_min_amount": settings.free_shipping_min_amount,
+        })
+
 
 
 # -----------------------------

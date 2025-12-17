@@ -13,9 +13,11 @@ class Address(models.Model):
     full_address = models.TextField()
 
     is_default = models.BooleanField(default=False)
+    is_temporary = models.BooleanField(default=False)  # 🔥 important
 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.name} - {self.pincode}"
+
 

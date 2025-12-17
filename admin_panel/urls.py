@@ -35,6 +35,8 @@ urlpatterns = [
 
     # Settings
     path("settings/", AdminSiteSettingsAPIView.as_view()),
+    path("public-settings/", PublicSiteSettingsAPIView.as_view()),
+
 
     # Dashboard
     path("dashboard/", AdminDashboardStatsAPIView.as_view()),

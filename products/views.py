@@ -32,3 +32,23 @@ class PublicProductDetailAPIView(APIView):
             return Response({"error": "Product not found"}, status=404)
 
         return Response(ProductSerializer(product, context={"request": request}).data)
+    
+
+class RelatedProductsAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, pk):
+        try:
+            product = Product.objects.get(pk=pk, is_active=True)
+        except Product.DoesNotExist:
+            return Response([])
+
+        related = Product.objects.filter(
+            category=product.category,
+            is_active=True
+        ).exclude(id=product.id)[:4]
+
+        serializer = ProductSerializer(
+            related, many=True, context={"request": request}
+        )
+        return Response(serializer.data)

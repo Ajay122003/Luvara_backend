@@ -138,7 +138,14 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
 class SiteSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = SiteSettings
-        fields = ["enable_cod", "allow_order_cancel", "allow_order_return"]
+        fields = [
+          "enable_cod",
+          "allow_order_cancel",
+          "allow_order_return",
+          "shipping_charge",
+          "free_shipping_min_amount"
+        ]
+
 
 
 class AdminEmailChangeSerializer(serializers.Serializer):
