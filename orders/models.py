@@ -78,4 +78,3 @@ class ReturnRequest(models.Model):
     def __str__(self):
         return f"Return {self.order.order_number} - {self.status}"
 
-
