@@ -1,12 +1,16 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated , AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from .serializers import *
 from .models import User
 import logging
-
+from django.db.models import Q
+from products.models import Product
+from categories.models import Category
+from products.serializers import ProductSerializer
+from categories.serializers import CategorySerializer
 
 def get_tokens(user):
     refresh = RefreshToken.for_user(user)
@@ -125,3 +129,5 @@ class UpdateProfileView(APIView):
                 status=200
             )
         return Response(serializer.errors, status=400)
+
+

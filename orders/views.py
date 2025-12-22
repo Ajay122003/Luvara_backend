@@ -95,7 +95,6 @@ class UserOrderDetailAPIView(APIView):
 
         serializer = OrderDetailSerializer(order)
 
-        # ---------- Admin settings ----------
         settings_obj = SiteSettings.objects.first()
         if not settings_obj:
             settings_obj = SiteSettings.objects.create()
@@ -108,7 +107,8 @@ class UserOrderDetailAPIView(APIView):
         )
 
         response["can_return"] = (
-            settings_obj.allow_order_return and order.status == "DELIVERED"
+            settings_obj.allow_order_return
+            and order.status == "DELIVERED"
         )
 
         response["cod_enabled"] = settings_obj.enable_cod
@@ -128,24 +128,29 @@ class CancelOrderAPIView(APIView):
         settings_obj = SiteSettings.objects.first()
         if not settings_obj or not settings_obj.allow_order_cancel:
             return Response(
-                {"error": "Order cancellation is disabled"}, status=403
+                {"error": "Order cancellation is disabled"},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         if order.status not in ["PENDING", "PROCESSING"]:
             return Response(
-                {"error": "This order cannot be cancelled now"}, status=400
+                {"error": "This order cannot be cancelled now"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         order.status = "CANCELLED"
         order.save()
 
-        # ---------- Restore stock ----------
+        # ---------- RESTORE VARIANT STOCK ----------
         for item in order.items.all():
-            if item.product:
-                item.product.stock += item.quantity
-                item.product.save()
+            if item.variant:
+                item.variant.stock += item.quantity
+                item.variant.save()
 
-        return Response({"message": "Order cancelled successfully"}, status=200)
+        return Response(
+            {"message": "Order cancelled successfully"},
+            status=status.HTTP_200_OK,
+        )
 
 
 class RequestReturnAPIView(APIView):
@@ -159,24 +164,30 @@ class RequestReturnAPIView(APIView):
 
         settings_obj = SiteSettings.objects.first()
         if not settings_obj or not settings_obj.allow_order_return:
-            return Response({"error": "Returns are disabled"}, status=403)
+            return Response(
+                {"error": "Returns are disabled"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if order.status != "DELIVERED":
             return Response(
-                {"error": "Only delivered orders can be returned"}, status=400
+                {"error": "Only delivered orders can be returned"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if ReturnRequest.objects.filter(
             order=order, user=request.user
         ).exists():
             return Response(
-                {"error": "Return already requested"}, status=400
+                {"error": "Return already requested"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         reason = request.data.get("reason", "")
         if not reason:
             return Response(
-                {"error": "Reason is required"}, status=400
+                {"error": "Reason is required"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         ReturnRequest.objects.create(
@@ -184,7 +195,8 @@ class RequestReturnAPIView(APIView):
         )
 
         return Response(
-            {"message": "Return request submitted"}, status=201
+            {"message": "Return request submitted"},
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -200,5 +212,6 @@ class OrderInvoiceAPIView(APIView):
         file_path = generate_invoice_pdf(order)
 
         return FileResponse(
-            open(file_path, "rb"), content_type="application/pdf"
+            open(file_path, "rb"),
+            content_type="application/pdf",
         )
