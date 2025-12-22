@@ -1,19 +1,19 @@
 from django.db import models
 from users.models import User
-from products.models import Product
+from products.models import ProductVariant
 
 
 class CartItem(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="cart_items" )
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    quantity = models.PositiveIntegerField(default=0)
-    size = models.CharField(max_length=20, blank=True)
-    color = models.CharField(max_length=20, blank=True)
+    user = models.ForeignKey(User,  on_delete=models.CASCADE,  related_name="cart_items" )
+
+    variant = models.ForeignKey(  ProductVariant,  on_delete=models.CASCADE,  related_name="cart_items" )
+
+    quantity = models.PositiveIntegerField(default=1)
 
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("user", "product", "size", "color")
+        unique_together = ("user", "variant")
 
     def __str__(self):
-        return f"{self.user.email} - {self.product.name}"
+        return f"{self.user.email} - {self.variant.product.name} ({self.variant.size})"

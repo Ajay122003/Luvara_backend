@@ -9,6 +9,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db.models import Sum, Q
+import json
 
 from .permissions import IsAdminUserCustom
 from .models import SiteSettings, AdminOTP
@@ -128,12 +129,17 @@ class AdminChangePasswordAPIView(APIView):
             return Response({"message": "Password updated successfully"})
 
         return Response(serializer.errors, status=400)
+    
+
+
+
+
 
 class AdminUserListView(APIView):
     permission_classes = [IsAdminUserCustom]
 
     def get(self, request):
-        users = User.objects.all().values("id", "email", "username", "date_joined")
+        users = User.objects.filter(is_staff=False).values("id", "email", "username", "date_joined")
         return Response(users)
 
 
@@ -301,6 +307,8 @@ class AdminCollectionDetailAPIView(APIView):
 
         collection.delete()
         return Response({"message": "Collection deleted successfully"}, status=200)
+    
+
 # -----------------------------
 # PRODUCT MANAGEMENT
 # -----------------------------
@@ -316,19 +324,34 @@ class AdminProductListCreateAPIView(APIView):
         return Response(serializer.data)
 
     def post(self, request):
-        serializer = ProductCreateSerializer(
-            data=request.data,
-            context={"request": request}   # ⭐ VERY IMPORTANT
+        data = request.data.copy()
+
+        # 🔥 CREATE PRODUCT FIRST
+        serializer = AdminProductCreateSerializer(data=data)
+        if not serializer.is_valid():
+            print("🔥 PRODUCT ERRORS 👉", serializer.errors)
+            return Response(serializer.errors, status=400)
+
+        product = serializer.save()
+
+        # 🔥 CREATE VARIANTS MANUALLY
+        i = 0
+        while f"variants[{i}][size]" in request.data:
+            ProductVariant.objects.create(
+                product=product,
+                size=request.data.get(f"variants[{i}][size]"),
+                color=request.data.get(f"variants[{i}][color]"),
+                stock=int(request.data.get(f"variants[{i}][stock]", 0)),
+            )
+            i += 1
+        print("🔥 SERIALIZER ERRORS 👉", serializer.errors)
+       
+        return Response(
+            ProductSerializer(product, context={"request": request}).data,
+            status=201
         )
 
-        if serializer.is_valid():
-            product = serializer.save()
-            return Response(
-                ProductSerializer(product, context={"request": request}).data,
-                status=201
-            )
-
-        return Response(serializer.errors, status=400)
+        
 
 
 class AdminProductDetailAPIView(APIView):
@@ -341,52 +364,69 @@ class AdminProductDetailAPIView(APIView):
         except Product.DoesNotExist:
             return None
 
+    # -------- GET SINGLE PRODUCT --------
     def get(self, request, pk):
         product = self.get_object(pk)
         if not product:
-            return Response(
-                {"error": "Product not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"error": "Product not found"}, status=404)
 
-        serializer = ProductSerializer(product, context={"request": request})
-        return Response(serializer.data)
+        return Response(
+            ProductSerializer(product, context={"request": request}).data
+        )
 
+    # -------- UPDATE PRODUCT --------
     def put(self, request, pk):
         product = self.get_object(pk)
         if not product:
-            return Response(
-                {"error": "Product not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"error": "Product not found"}, status=404)
+
+        data = request.data.copy()
 
         serializer = AdminProductCreateSerializer(
-            product, data=request.data, partial=True
+            product,
+            data=data,
+            partial=True
         )
-        if serializer.is_valid():
-            updated_product = serializer.save()
-            return Response(
-                ProductSerializer(
-                    updated_product, context={"request": request}
-                ).data
-            )
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+            print("🔥 PRODUCT UPDATE ERRORS 👉", serializer.errors)
+            return Response(serializer.errors, status=400)
 
+        updated_product = serializer.save()
+
+        # 🔥 UPDATE VARIANTS (REPLACE ALL)
+        ProductVariant.objects.filter(product=updated_product).delete()
+
+        if "variants" in request.data:
+            try:
+                variants = json.loads(request.data.get("variants"))
+            except Exception:
+                return Response(
+                    {"variants": ["Invalid format"]},
+                    status=400
+                )
+
+            for v in variants:
+                ProductVariant.objects.create(
+                    product=updated_product,
+                    size=v.get("size"),
+                    color=v.get("color"),
+                    stock=v.get("stock", 0),
+                )
+        print(" SERIALIZER ERRORS ", serializer.errors)
+        return Response(
+            ProductSerializer(updated_product, context={"request": request}).data,
+            status=200
+        )
+
+    # -------- DELETE PRODUCT --------
     def delete(self, request, pk):
         product = self.get_object(pk)
         if not product:
-            return Response(
-                {"error": "Product not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"error": "Product not found"}, status=404)
 
         product.delete()
-        return Response(
-            {"message": "Product deleted successfully"},
-            status=status.HTTP_200_OK,
-        )
-
+        return Response({"message": "Product deleted"}, status=200)
 
 class AdminDeleteProductImageAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
@@ -395,11 +435,16 @@ class AdminDeleteProductImageAPIView(APIView):
         try:
             img = ProductImage.objects.get(id=image_id)
         except ProductImage.DoesNotExist:
-            return Response({"error": "Image not found"}, status=404)
+            return Response(
+                {"error": "Image not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         img.delete()
-        return Response({"message": "Image deleted"}, status=200)
-
+        return Response(
+            {"message": "Image deleted successfully"},
+            status=status.HTTP_200_OK,
+        )
 
 # -----------------------------
 # ORDER MANAGEMENT
@@ -429,7 +474,8 @@ class AdminOrderDetailAPIView(APIView):
             order = Order.objects.get(id=pk)
         except Order.DoesNotExist:
             return Response(
-                {"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         serializer = AdminOrderDetailSerializer(order)
@@ -440,7 +486,8 @@ class AdminOrderDetailAPIView(APIView):
             order = Order.objects.get(id=pk)
         except Order.DoesNotExist:
             return Response(
-                {"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         new_status = request.data.get("status")
@@ -454,7 +501,10 @@ class AdminOrderDetailAPIView(APIView):
 
         order.save()
 
-        return Response({"message": "Order updated successfully"})
+        return Response(
+            {"message": "Order updated successfully"},
+            status=status.HTTP_200_OK,
+        )
 
 
 # -----------------------------
@@ -507,21 +557,24 @@ class PublicSiteSettingsAPIView(APIView):
 # DASHBOARD STATS + CACHE
 # -----------------------------
 
+
+
+
 class AdminDashboardStatsAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 
     def get(self, request):
-        # Try cache first
+        # ---------------- CACHE ----------------
         cached_data = cache.get("admin_dashboard_stats")
         if cached_data:
             return Response(cached_data)
 
-        # Summary stats
+        # ---------------- BASIC COUNTS ----------------
         total_users = User.objects.filter(is_staff=False).count()
         total_orders = Order.objects.count()
-
         total_subscribers = Subscriber.objects.count()
 
+        # ---------------- REVENUE ----------------
         total_revenue = (
             Order.objects.filter(
                 Q(payment_status="PAID") |
@@ -533,12 +586,12 @@ class AdminDashboardStatsAPIView(APIView):
 
         today = now().date()
 
-        todays_orders = Order.objects.filter(created_at__date=today).count()
+        todays_orders = Order.objects.filter(
+            created_at__date=today
+        ).count()
 
         todays_revenue = (
-            Order.objects.filter(
-                created_at__date=today
-            )
+            Order.objects.filter(created_at__date=today)
             .filter(
                 Q(payment_status="PAID") |
                 Q(payment_status="COD", status="DELIVERED")
@@ -550,34 +603,45 @@ class AdminDashboardStatsAPIView(APIView):
         pending_orders = Order.objects.filter(status="PENDING").count()
         delivered_orders = Order.objects.filter(status="DELIVERED").count()
 
-        # BEST SELLERS — product info + single image
+        # ---------------- BEST SELLERS (VARIANT → PRODUCT) ----------------
         best_sellers = (
-            OrderItem.objects.values(
-                "product_id",
-                "product__name",
-                "product__price",
-                "product__sale_price",
+            OrderItem.objects
+            .values(
+                "variant__product_id",
+                "variant__product__name",
+                "variant__product__price",
+                "variant__product__sale_price",
             )
             .annotate(total_sold=Sum("quantity"))
             .order_by("-total_sold")[:5]
         )
 
-        # Attach image manually for each product
+        # Attach product image
         for item in best_sellers:
-            from products.models import ProductImage
-            img = ProductImage.objects.filter(product_id=item["product_id"]).first()
+            img = ProductImage.objects.filter(
+                product_id=item["variant__product_id"]
+            ).first()
             item["image"] = img.image.url if img else None
 
+        # ---------------- LOW STOCK (BASED ON VARIANTS) ----------------
         LOW_STOCK_THRESHOLD = 5
 
-        low_stock_count = Product.objects.filter(
-            is_active=True, stock__lte=LOW_STOCK_THRESHOLD
-        ).count()
+        low_stock_count = (
+            Product.objects
+            .filter(
+                variants__stock__lte=LOW_STOCK_THRESHOLD,
+                is_active=True
+            )
+            .distinct()
+            .count()
+        )
 
+        # ---------------- PRODUCT / CATEGORY COUNTS ----------------
         total_products = Product.objects.count()
         active_products = Product.objects.filter(is_active=True).count()
         total_categories = Category.objects.count()
 
+        # ---------------- FINAL RESPONSE ----------------
         data = {
             "total_users": total_users,
             "total_orders": total_orders,
@@ -601,12 +665,6 @@ class AdminDashboardStatsAPIView(APIView):
 
 
 class AdminLowStockProductsAPIView(APIView):
-    """
-    Returns list of products where stock is below a threshold.
-    Default threshold = 5
-    Admin-only access.
-    """
-
     permission_classes = [IsAdminUserCustom]
 
     def get(self, request):
@@ -615,9 +673,16 @@ class AdminLowStockProductsAPIView(APIView):
         except ValueError:
             threshold = 5
 
-        low_stock_products = Product.objects.filter(
-            is_active=True, stock__lte=threshold
-        ).order_by("stock")
+        # 🔥 Find products where ANY variant stock <= threshold
+        low_stock_products = (
+            Product.objects
+            .filter(
+                variants__stock__lte=threshold,
+                is_active=True
+            )
+            .distinct()
+            .prefetch_related("variants", "images")
+        )
 
         serializer = ProductSerializer(
             low_stock_products,
@@ -632,7 +697,6 @@ class AdminLowStockProductsAPIView(APIView):
                 "results": serializer.data,
             }
         )
-
 
 # -----------------------------
 # COUPON MANAGEMENT

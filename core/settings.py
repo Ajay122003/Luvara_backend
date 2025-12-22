@@ -44,18 +44,22 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
 
-    # Local apps
+   # Custom apps (ORDER MATTERS)
     "users",
-    'subscriptions',
+    "addresses",
+
     "categories",
     "product_collections",
     "products",
-    "wishlist",
+
     "cart",
-    "orders",
+    "wishlist",
+
     "coupons",
+    "orders",
     "payments",
-    "addresses",
+
+    "subscriptions",
     "admin_panel",
 ]
 

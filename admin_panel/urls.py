@@ -8,6 +8,7 @@ urlpatterns = [
     path("test/", AdminTestAPIView.as_view()),
     path("users/", AdminUserListView.as_view()),
     path("subscriptions/", AdminSubscriptionListView.as_view()),
+    
 
 
 

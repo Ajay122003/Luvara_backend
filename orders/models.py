@@ -1,7 +1,7 @@
 from django.db import models
 from users.models import User
 from addresses.models import Address
-from products.models import Product
+from products.models import Product , ProductVariant
 from coupons.models import Coupon
 
 ORDER_STATUS = [
@@ -21,31 +21,21 @@ class Order(models.Model):
 
     order_number = models.CharField(max_length=20, unique=True)
 
-    # ---------- PRICE BREAKUP ----------
-    subtotal_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # product total
+    subtotal_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    shipping_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
-    discount_amount = models.DecimalField( max_digits=10, decimal_places=2, default=0)  # coupon discount
-
-    shipping_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0 )  # delivery charge
-
-    gst_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=5)  # GST %
-
+    gst_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=5)
     gst_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
-    # FINAL PAYABLE AMOUNT (product + shipping + gst - discount)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
 
-    # ---------- COUPON ----------
-    coupon = models.ForeignKey(Coupon, null=True, blank=True, on_delete=models.SET_NULL )
+    coupon = models.ForeignKey(Coupon, null=True, blank=True, on_delete=models.SET_NULL)
 
-    # ---------- PAYMENT ----------
-    payment_status = models.CharField(max_length=20, default="PENDING" )  # PENDING / PAID / FAILED / COD
+    payment_status = models.CharField(max_length=20, default="PENDING")
+    payment_id = models.CharField(max_length=100, blank=True, null=True)
 
-    payment_id = models.CharField(max_length=100, blank=True, null=True )  # Razorpay Payment ID
-
-    # ---------- ORDER STATUS ----------
-    status = models.CharField( max_length=20, choices=ORDER_STATUS, default="PENDING" )
-
+    status = models.CharField(max_length=20, choices=ORDER_STATUS, default="PENDING")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -53,17 +43,31 @@ class Order(models.Model):
 
 
 class OrderItem(models.Model):
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
-    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="items"
+    )
 
-    quantity = models.IntegerField(default=1)
-    price = models.DecimalField(max_digits=10, decimal_places=2 )  # price snapshot at purchase
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.SET_NULL,
+        null=True
+    )
 
-    size = models.CharField(max_length=20, blank=True)
+    quantity = models.PositiveIntegerField(default=1)
+
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )  # price snapshot at purchase
+
     color = models.CharField(max_length=20, blank=True)
 
     def __str__(self):
-        return f"{self.product} - {self.quantity}"
+        if self.variant:
+            return f"{self.variant.product.name} ({self.variant.size}) x {self.quantity}"
+        return f"Item x {self.quantity}"
 
 
 RETURN_STATUS = [

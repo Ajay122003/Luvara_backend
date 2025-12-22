@@ -8,11 +8,12 @@ def generate_otp():
 
 
 def send_admin_otp_email(admin_user, otp):
-    subject = " Luvara Admin Login OTP"
+    subject = "Luvara Admin Login OTP"
 
     text_message = f"Your OTP is: {otp}"
 
-    # ======================= PREMIUM HTML EMAIL ===========================
+    logo_url = "https://i.postimg.cc/9w73g34h/logo.png"
+
     html_message = f"""
     <div style="background:#f4f4f4; padding:40px 0; font-family:'Segoe UI', sans-serif;">
       <div style="
@@ -23,7 +24,15 @@ def send_admin_otp_email(admin_user, otp):
           border-radius:14px; 
           box-shadow:0 8px 30px rgba(0,0,0,0.08);
       ">
-        
+
+        <!-- LOGO -->
+        <div style="text-align:center; margin-bottom:20px;">
+          <img src="{logo_url}" 
+               alt="Luvara Store" 
+               width="110"
+               style="display:block; margin:auto;" />
+        </div>
+
         <!-- BRAND -->
         <h1 style="
             text-align:center; 
@@ -59,7 +68,7 @@ def send_admin_otp_email(admin_user, otp):
         <!-- MESSAGE -->
         <p style="font-size:15px; color:#444; line-height:1.7;">
           Hello <b>{admin_user.email}</b>,<br>
-          To proceed with your admin login, please use the secure One-Time Password (OTP) provided below.
+          To proceed with your admin login, please use the secure One-Time Password (OTP provided below).
         </p>
 
         <!-- OTP BOX -->
@@ -82,7 +91,7 @@ def send_admin_otp_email(admin_user, otp):
         <!-- INFO -->
         <p style="font-size:14px; color:#666; line-height:1.6;">
           This OTP is valid for <b>5 minutes</b>.<br>
-          If you did not request this login attempt, please change your admin password immediately and review security activity.
+          If you did not request this login attempt, please change your admin password immediately.
         </p>
 
         <!-- FOOTER -->
@@ -98,7 +107,6 @@ def send_admin_otp_email(admin_user, otp):
       </div>
     </div>
     """
-    # ======================================================================
 
     email = EmailMultiAlternatives(
         subject,
