@@ -2,5 +2,5 @@ from django.urls import path
 from .views import ApplyCouponAPIView
 
 urlpatterns = [
-    path("apply/", ApplyCouponAPIView.as_view()),
+    path("apply/", ApplyCouponAPIView.as_view(), name="apply-coupon"),
 ]

@@ -8,12 +8,10 @@ def generate_invoice_pdf(order):
     file_name = f"invoice_{order.order_number}.pdf"
     file_path = os.path.join(settings.MEDIA_ROOT, "invoices", file_name)
 
-    # Create folder if not exists
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
     c = canvas.Canvas(file_path, pagesize=A4)
     width, height = A4
-
     y = height - 40
 
     # ================= HEADER =================
@@ -63,7 +61,13 @@ def generate_invoice_pdf(order):
     for item in order.items.all():
         total = item.price * item.quantity
 
-        c.drawString(30, y, item.product.name[:25] if item.product else "N/A")
+        product_name = (
+            item.variant.product.name
+            if item.variant and item.variant.product
+            else "N/A"
+        )
+
+        c.drawString(30, y, product_name[:25])
         c.drawString(250, y, str(item.quantity))
         c.drawString(300, y, f"₹{item.price}")
         c.drawString(380, y, f"₹{total}")
@@ -89,9 +93,10 @@ def generate_invoice_pdf(order):
     c.drawString(380, y, f"₹{order.shipping_amount}")
     y -= 20
 
-    # Taxable amount (Product + Shipping – Discount)
     taxable_amount = (
-        order.subtotal_amount - order.discount_amount + order.shipping_amount
+        order.subtotal_amount
+        - order.discount_amount
+        + order.shipping_amount
     )
 
     c.drawString(300, y, "Taxable Amount:")
