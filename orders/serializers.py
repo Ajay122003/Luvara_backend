@@ -9,18 +9,14 @@ from addresses.models import Address
 from products.serializers import ProductSerializer
 from .utils import generate_order_number
 from coupons.models import Coupon
+from django.utils import timezone
 
 GST_PERCENTAGE = Decimal("3.00")
-
 
 
 class OrderItemInputSerializer(serializers.Serializer):
     variant_id = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
-
-
-
-
 
 
 class OrderCreateSerializer(serializers.Serializer):
@@ -35,15 +31,12 @@ class OrderCreateSerializer(serializers.Serializer):
         request = self.context["request"]
         user = request.user
 
-        # ================= DELIVERY ADDRESS =================
+        # ---------------- ADDRESS ----------------
         address = None
-
         if data.get("address_id"):
             try:
                 address = Address.objects.get(
-                    id=data["address_id"],
-                    user=user,
-                    is_temporary=False
+                    id=data["address_id"], user=user, is_temporary=False
                 )
             except Address.DoesNotExist:
                 raise serializers.ValidationError("Invalid address")
@@ -68,14 +61,13 @@ class OrderCreateSerializer(serializers.Serializer):
         else:
             raise serializers.ValidationError("Delivery address required")
 
-        # ================= VARIANTS + STOCK =================
+        # ---------------- VARIANTS ----------------
         variant_ids = [i["variant_id"] for i in data["items"]]
 
         variants = {
             v.id: v
             for v in ProductVariant.objects.select_for_update().filter(
-                id__in=variant_ids,
-                product__is_active=True
+                id__in=variant_ids, product__is_active=True
             )
         }
 
@@ -83,34 +75,39 @@ class OrderCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid product variant")
 
         subtotal = Decimal("0.00")
-
         for item in data["items"]:
             variant = variants[item["variant_id"]]
-
             if variant.stock < item["quantity"]:
                 raise serializers.ValidationError(
-                    f"Not enough stock for {variant.product.name} ({variant.size})"
+                    f"Not enough stock for {variant.product.name}"
                 )
 
             price = variant.product.sale_price or variant.product.price
-            subtotal += Decimal(str(price)) * item["quantity"]
+            subtotal += Decimal(price) * item["quantity"]
 
-        # ================= COUPON =================
+        # ---------------- COUPON ----------------
         coupon_obj = None
         discount = Decimal("0.00")
-        final_amount = subtotal
-
         coupon_code = data.get("coupon_code", "").strip()
+
         if coupon_code:
             try:
-                coupon_obj = Coupon.objects.get(code__iexact=coupon_code)
+                coupon_obj = Coupon.objects.select_for_update().get(
+                    code__iexact=coupon_code
+                )
             except Coupon.DoesNotExist:
                 raise serializers.ValidationError("Invalid coupon")
 
-            if not coupon_obj.is_active or coupon_obj.expiry_date < now():
+            if not coupon_obj.is_active:
+                raise serializers.ValidationError("Coupon inactive")
+
+            if timezone.now() > coupon_obj.expiry_date:
                 raise serializers.ValidationError("Coupon expired")
 
-            if subtotal < coupon_obj.min_purchase:
+            if coupon_obj.used_count >= coupon_obj.usage_limit:
+                raise serializers.ValidationError("Coupon usage limit exceeded")
+
+            if subtotal < Decimal(coupon_obj.min_purchase):
                 raise serializers.ValidationError("Minimum purchase not met")
 
             if coupon_obj.discount_type == "PERCENT":
@@ -119,29 +116,30 @@ class OrderCreateSerializer(serializers.Serializer):
                 discount = Decimal(coupon_obj.discount_value)
 
             discount = min(discount, subtotal)
-            final_amount = subtotal - discount
 
-        # ================= SHIPPING =================
+        # ---------------- SHIPPING ----------------
         settings = SiteSettings.objects.first()
         shipping_amount = (
             settings.shipping_charge
-            if final_amount < settings.free_shipping_min_amount
+            if subtotal - discount < settings.free_shipping_min_amount
             else Decimal("0.00")
         )
 
-        # ================= GST =================
-        taxable = final_amount + shipping_amount
+        # ---------------- GST ----------------
+        taxable = subtotal - discount + shipping_amount
         gst_amount = (taxable * GST_PERCENTAGE) / 100
         grand_total = taxable + gst_amount
 
-        data["address_obj"] = address
-        data["variants_cache"] = variants
-        data["subtotal"] = subtotal
-        data["discount"] = discount
-        data["shipping_amount"] = shipping_amount
-        data["gst_amount"] = gst_amount
-        data["grand_total"] = grand_total
-        data["coupon_obj"] = coupon_obj
+        data.update({
+            "address_obj": address,
+            "variants_cache": variants,
+            "subtotal": subtotal,
+            "discount": discount,
+            "shipping_amount": shipping_amount,
+            "gst_amount": gst_amount,
+            "grand_total": grand_total,
+            "coupon_obj": coupon_obj,
+        })
 
         return data
 
@@ -161,7 +159,6 @@ class OrderCreateSerializer(serializers.Serializer):
             total_amount=validated_data["grand_total"],
             coupon=validated_data["coupon_obj"],
             payment_status="PENDING",
-            status="PENDING",
         )
 
         for item in validated_data["items"]:
@@ -175,9 +172,14 @@ class OrderCreateSerializer(serializers.Serializer):
                 price=price,
             )
 
-            #  STOCK REDUCE
             variant.stock -= item["quantity"]
             variant.save()
+
+        #  INCREMENT COUPON USAGE
+        if validated_data["coupon_obj"]:
+            coupon = validated_data["coupon_obj"]
+            coupon.used_count += 1
+            coupon.save(update_fields=["used_count"])
 
         return order
 
@@ -185,11 +187,29 @@ class OrderCreateSerializer(serializers.Serializer):
 # ================= READ SERIALIZERS =================
 
 class OrderItemDetailSerializer(serializers.ModelSerializer):
-    product = ProductSerializer()
+    product = serializers.SerializerMethodField()
+    size = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
-        fields = ["id", "product", "quantity", "price", "size", "color"]
+        fields = [
+            "id",
+            "product",
+            "size",
+            "quantity",
+            "price",
+            "color",
+        ]
+
+    def get_product(self, obj):
+        if obj.variant and obj.variant.product:
+            return obj.variant.product.name
+        return None
+
+    def get_size(self, obj):
+        if obj.variant:
+            return obj.variant.size
+        return None
 
 
 class OrderDetailSerializer(serializers.ModelSerializer):

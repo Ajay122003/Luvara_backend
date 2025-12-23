@@ -10,7 +10,6 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db.models import Sum, Q
 import json
-
 from .permissions import IsAdminUserCustom
 from .models import SiteSettings, AdminOTP
 from .serializers import *
@@ -326,15 +325,15 @@ class AdminProductListCreateAPIView(APIView):
     def post(self, request):
         data = request.data.copy()
 
-        # 🔥 CREATE PRODUCT FIRST
+        #  CREATE PRODUCT FIRST
         serializer = AdminProductCreateSerializer(data=data)
         if not serializer.is_valid():
-            print("🔥 PRODUCT ERRORS 👉", serializer.errors)
+            print(" PRODUCT ERRORS ", serializer.errors)
             return Response(serializer.errors, status=400)
 
         product = serializer.save()
 
-        # 🔥 CREATE VARIANTS MANUALLY
+        #  CREATE VARIANTS MANUALLY
         i = 0
         while f"variants[{i}][size]" in request.data:
             ProductVariant.objects.create(
@@ -344,7 +343,7 @@ class AdminProductListCreateAPIView(APIView):
                 stock=int(request.data.get(f"variants[{i}][stock]", 0)),
             )
             i += 1
-        print("🔥 SERIALIZER ERRORS 👉", serializer.errors)
+        print(" SERIALIZER ERRORS ", serializer.errors)
        
         return Response(
             ProductSerializer(product, context={"request": request}).data,
@@ -389,12 +388,12 @@ class AdminProductDetailAPIView(APIView):
         )
 
         if not serializer.is_valid():
-            print("🔥 PRODUCT UPDATE ERRORS 👉", serializer.errors)
+            print(" PRODUCT UPDATE ERRORS ", serializer.errors)
             return Response(serializer.errors, status=400)
 
         updated_product = serializer.save()
 
-        # 🔥 UPDATE VARIANTS (REPLACE ALL)
+        # UPDATE VARIANTS (REPLACE ALL)
         ProductVariant.objects.filter(product=updated_product).delete()
 
         if "variants" in request.data:
@@ -673,7 +672,7 @@ class AdminLowStockProductsAPIView(APIView):
         except ValueError:
             threshold = 5
 
-        # 🔥 Find products where ANY variant stock <= threshold
+        #  Find products where ANY variant stock <= threshold
         low_stock_products = (
             Product.objects
             .filter(
@@ -714,9 +713,11 @@ class AdminCouponListCreateAPIView(APIView):
         if serializer.is_valid():
             serializer.save()
             return Response(
-                {"message": "Coupon created", "data": serializer.data}, status=201
+                {"message": "Coupon created", "data": serializer.data},
+                status=201
             )
         return Response(serializer.errors, status=400)
+
 
 
 class AdminCouponDetailAPIView(APIView):
@@ -741,7 +742,9 @@ class AdminCouponDetailAPIView(APIView):
         if not coupon:
             return Response({"error": "Coupon not found"}, status=404)
 
-        serializer = AdminCouponSerializer(coupon, data=request.data, partial=True)
+        serializer = AdminCouponSerializer(
+            coupon, data=request.data, partial=True
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(

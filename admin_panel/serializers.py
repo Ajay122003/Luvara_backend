@@ -1,5 +1,4 @@
 
-
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from product_collections.models import Collection
@@ -8,6 +7,8 @@ from products.models import Product, ProductImage, ProductVariant
 from orders.models import Order, OrderItem
 from addresses.serializers import AddressSerializer
 from .models import SiteSettings
+from django.utils import timezone
+from coupons.models import Coupon
 
 
 class AdminLoginSerializer(serializers.Serializer):
@@ -105,7 +106,6 @@ class AdminOrderListSerializer(serializers.ModelSerializer):
             "created_at",
         ]
 
-
 class AdminOrderDetailSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     user_email = serializers.CharField(source="user.email", read_only=True)
@@ -117,7 +117,14 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             "id",
             "order_number",
             "user_email",
+
+            # 🔥 ADD THESE
+            "subtotal_amount",
+            "discount_amount",
+            "shipping_amount",
+            "gst_amount",
             "total_amount",
+
             "payment_status",
             "status",
             "created_at",
@@ -135,6 +142,22 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             }
             for item in obj.items.all()
         ]
+
+    def get_address_details(self, obj):
+        address = obj.address
+        if not address:
+            return None
+
+        return {
+            "name": address.name,
+            "phone": address.phone,
+            "pincode": address.pincode,
+            "city": address.city,
+            "state": address.state,
+            "full_address": address.full_address,
+        }
+
+
 
 
 class SiteSettingsSerializer(serializers.ModelSerializer):
@@ -175,3 +198,76 @@ class AdminPasswordChangeSerializer(serializers.Serializer):
 class AdminOTPVerifySerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=6)
+
+
+
+
+
+
+class AdminCouponSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Coupon
+        fields = "__all__"
+
+    def validate_code(self, value):
+        value = value.strip().upper()
+
+        if len(value) < 4:
+            raise serializers.ValidationError(
+                "Coupon code must be at least 4 characters"
+            )
+
+        return value
+
+    def validate_discount_value(self, value):
+        if value <= 0:
+            raise serializers.ValidationError(
+                "Discount value must be greater than 0"
+            )
+        return value
+
+    def validate_min_purchase(self, value):
+        if value < 0:
+            raise serializers.ValidationError(
+                "Minimum purchase cannot be negative"
+            )
+        return value
+
+    def validate(self, data):
+        discount_type = data.get(
+            "discount_type",
+            self.instance.discount_type if self.instance else None
+        )
+        discount_value = data.get(
+            "discount_value",
+            self.instance.discount_value if self.instance else None
+        )
+        expiry_date = data.get(
+            "expiry_date",
+            self.instance.expiry_date if self.instance else None
+        )
+        usage_limit = data.get(
+            "usage_limit",
+            self.instance.usage_limit if self.instance else None
+        )
+        used_count = self.instance.used_count if self.instance else 0
+
+        # Expiry date must be future
+        if expiry_date and expiry_date <= timezone.now():
+            raise serializers.ValidationError({
+                "expiry_date": "Expiry date must be in the future"
+            })
+
+        # Percent discount cannot exceed 100
+        if discount_type == "PERCENT" and discount_value > 100:
+            raise serializers.ValidationError({
+                "discount_value": "Percentage discount cannot exceed 100"
+            })
+
+        # Usage limit logic
+        if usage_limit is not None and usage_limit < used_count:
+            raise serializers.ValidationError({
+                "usage_limit": "Usage limit cannot be less than used count"
+            })
+
+        return data
