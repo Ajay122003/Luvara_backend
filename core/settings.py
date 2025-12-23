@@ -170,11 +170,12 @@ REST_FRAMEWORK = {
 
     # ALL RATES MERGED HERE
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "100/day",
-        "user": "1000/day",
-        "otp": "5/min",
-        "admin_login": "50/min",
-    }
+    "anon": "10000/day",
+    "user": "10000/day",
+    "otp": "50/min",
+    "admin_login": "500/min",
+}
+
 }
 
 
