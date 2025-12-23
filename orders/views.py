@@ -66,12 +66,13 @@ class OrderCreateAPIView(APIView):
                     "total_amount": float(order.total_amount),
 
                     "payment_status": order.payment_status,
-                    "coupon_code": request.data.get("coupon_code", "").strip()
+                    "coupon_code": (request.data.get("coupon_code") or "").strip()
+
                     or None,
                 },
                 status=status.HTTP_201_CREATED,
             )
-
+        print("ORDER CREATE ERROR ", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

@@ -10,43 +10,55 @@ from products.serializers import ProductSerializer
 from .utils import generate_order_number
 from coupons.models import Coupon
 from django.utils import timezone
+from cart.models import CartItem
 
 GST_PERCENTAGE = Decimal("3.00")
 
 
-class OrderItemInputSerializer(serializers.Serializer):
-    variant_id = serializers.IntegerField()
-    quantity = serializers.IntegerField(min_value=1)
-
-
 class OrderCreateSerializer(serializers.Serializer):
-    address_id = serializers.IntegerField(required=False)
-    delivery_address = serializers.DictField(required=False)
-    billing_address = serializers.DictField(required=False)
-
-    items = OrderItemInputSerializer(many=True)
-    coupon_code = serializers.CharField(required=False, allow_blank=True)
+    address_id = serializers.IntegerField(
+        required=False, allow_null=True
+    )
+    delivery_address = serializers.DictField(
+        required=False
+    )
+    billing_address = serializers.DictField(
+        required=False, allow_null=True
+    )
+    coupon_code = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+    payment_method = serializers.ChoiceField(
+        choices=["COD", "ONLINE"]
+    )
 
     def validate(self, data):
         request = self.context["request"]
         user = request.user
 
-        # ---------------- ADDRESS ----------------
+        # ---------- ADDRESS ----------
         address = None
+
         if data.get("address_id"):
             try:
                 address = Address.objects.get(
-                    id=data["address_id"], user=user, is_temporary=False
+                    id=data["address_id"],
+                    user=user,
+                    is_temporary=False
                 )
             except Address.DoesNotExist:
-                raise serializers.ValidationError("Invalid address")
+                raise serializers.ValidationError(
+                    {"address_id": "Invalid address"}
+                )
 
         elif data.get("delivery_address"):
             addr = data["delivery_address"]
             required = ["name", "phone", "pincode", "city", "full_address"]
             for f in required:
                 if not addr.get(f):
-                    raise serializers.ValidationError(f"{f} is required")
+                    raise serializers.ValidationError(
+                        {f: "This field is required"}
+                    )
 
             address = Address.objects.create(
                 user=user,
@@ -59,65 +71,71 @@ class OrderCreateSerializer(serializers.Serializer):
                 is_temporary=not addr.get("save_for_future", False),
             )
         else:
-            raise serializers.ValidationError("Delivery address required")
-
-        # ---------------- VARIANTS ----------------
-        variant_ids = [i["variant_id"] for i in data["items"]]
-
-        variants = {
-            v.id: v
-            for v in ProductVariant.objects.select_for_update().filter(
-                id__in=variant_ids, product__is_active=True
+            raise serializers.ValidationError(
+                "Delivery address required"
             )
-        }
 
-        if len(variants) != len(set(variant_ids)):
-            raise serializers.ValidationError("Invalid product variant")
+        # ---------- CART ----------
+        cart_items = CartItem.objects.select_for_update().filter(user=user)
+        if not cart_items.exists():
+            raise serializers.ValidationError(
+                {"items": "Cart is empty"}
+            )
 
         subtotal = Decimal("0.00")
-        for item in data["items"]:
-            variant = variants[item["variant_id"]]
-            if variant.stock < item["quantity"]:
+        for item in cart_items:
+            if item.variant.stock < item.quantity:
                 raise serializers.ValidationError(
-                    f"Not enough stock for {variant.product.name}"
+                    f"Not enough stock for {item.variant.product.name}"
                 )
 
-            price = variant.product.sale_price or variant.product.price
-            subtotal += Decimal(price) * item["quantity"]
+            price = (
+                item.variant.product.sale_price
+                or item.variant.product.price
+            )
+            subtotal += Decimal(price) * item.quantity
 
-        # ---------------- COUPON ----------------
+        # ---------- COUPON ----------
         coupon_obj = None
         discount = Decimal("0.00")
-        coupon_code = data.get("coupon_code", "").strip()
+        coupon_code = (data.get("coupon_code") or "").strip()
 
         if coupon_code:
             try:
                 coupon_obj = Coupon.objects.select_for_update().get(
-                    code__iexact=coupon_code
+                    code__iexact=coupon_code,
+                    is_active=True
                 )
             except Coupon.DoesNotExist:
-                raise serializers.ValidationError("Invalid coupon")
-
-            if not coupon_obj.is_active:
-                raise serializers.ValidationError("Coupon inactive")
+                raise serializers.ValidationError(
+                    {"coupon_code": "Invalid coupon"}
+                )
 
             if timezone.now() > coupon_obj.expiry_date:
-                raise serializers.ValidationError("Coupon expired")
+                raise serializers.ValidationError(
+                    {"coupon_code": "Coupon expired"}
+                )
 
             if coupon_obj.used_count >= coupon_obj.usage_limit:
-                raise serializers.ValidationError("Coupon usage limit exceeded")
+                raise serializers.ValidationError(
+                    {"coupon_code": "Usage limit exceeded"}
+                )
 
-            if subtotal < Decimal(coupon_obj.min_purchase):
-                raise serializers.ValidationError("Minimum purchase not met")
+            if subtotal < coupon_obj.min_purchase:
+                raise serializers.ValidationError(
+                    {"coupon_code": "Minimum purchase not met"}
+                )
 
             if coupon_obj.discount_type == "PERCENT":
-                discount = (Decimal(coupon_obj.discount_value) / 100) * subtotal
+                discount = (
+                    Decimal(coupon_obj.discount_value) / 100
+                ) * subtotal
             else:
                 discount = Decimal(coupon_obj.discount_value)
 
             discount = min(discount, subtotal)
 
-        # ---------------- SHIPPING ----------------
+        # ---------- SHIPPING ----------
         settings = SiteSettings.objects.first()
         shipping_amount = (
             settings.shipping_charge
@@ -125,19 +143,19 @@ class OrderCreateSerializer(serializers.Serializer):
             else Decimal("0.00")
         )
 
-        # ---------------- GST ----------------
+        # ---------- GST ----------
         taxable = subtotal - discount + shipping_amount
         gst_amount = (taxable * GST_PERCENTAGE) / 100
-        grand_total = taxable + gst_amount
+        total = taxable + gst_amount
 
         data.update({
             "address_obj": address,
-            "variants_cache": variants,
+            "cart_items": cart_items,
             "subtotal": subtotal,
             "discount": discount,
             "shipping_amount": shipping_amount,
             "gst_amount": gst_amount,
-            "grand_total": grand_total,
+            "total": total,
             "coupon_obj": coupon_obj,
         })
 
@@ -156,26 +174,29 @@ class OrderCreateSerializer(serializers.Serializer):
             shipping_amount=validated_data["shipping_amount"],
             gst_percentage=GST_PERCENTAGE,
             gst_amount=validated_data["gst_amount"],
-            total_amount=validated_data["grand_total"],
+            total_amount=validated_data["total"],
             coupon=validated_data["coupon_obj"],
             payment_status="PENDING",
         )
 
-        for item in validated_data["items"]:
-            variant = validated_data["variants_cache"][item["variant_id"]]
-            price = variant.product.sale_price or variant.product.price
+        for item in validated_data["cart_items"]:
+            price = (
+                item.variant.product.sale_price
+                or item.variant.product.price
+            )
 
             OrderItem.objects.create(
                 order=order,
-                variant=variant,
-                quantity=item["quantity"],
+                variant=item.variant,
+                quantity=item.quantity,
                 price=price,
             )
 
-            variant.stock -= item["quantity"]
-            variant.save()
+            item.variant.stock -= item.quantity
+            item.variant.save()
 
-        #  INCREMENT COUPON USAGE
+        validated_data["cart_items"].delete()
+
         if validated_data["coupon_obj"]:
             coupon = validated_data["coupon_obj"]
             coupon.used_count += 1
