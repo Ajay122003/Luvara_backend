@@ -44,13 +44,19 @@ class ProductVariant(models.Model):
         on_delete=models.CASCADE,
         related_name="variants"
     )
-    color = models.CharField(max_length=30)
+    color = models.CharField( max_length=30, blank=True, null=True)
     size = models.CharField(max_length=10)   # S, M, L, XL
     stock = models.PositiveIntegerField()
     
 
     class Meta:
-        unique_together = ("product", "size","color")
+        # unique only when color exists
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product", "size", "color"],
+                name="unique_variant_with_color"
+            )
+        ]
 
     def __str__(self):
         return f"{self.product.name} - {self.size}"

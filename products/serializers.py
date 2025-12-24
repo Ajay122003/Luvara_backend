@@ -26,7 +26,14 @@ class ProductImageSerializer(serializers.ModelSerializer):
 class ProductVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductVariant
-        fields = ["id", "size", "color", "stock"]
+        fields = "__all__"
+        extra_kwargs = {
+            "color": {
+                "required": False,
+                "allow_null": True,
+                "allow_blank": True
+            }
+        }
 
 
 # --------------------------------------------------
