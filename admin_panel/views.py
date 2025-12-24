@@ -343,7 +343,6 @@ class AdminProductListCreateAPIView(APIView):
                 stock=int(request.data.get(f"variants[{i}][stock]", 0)),
             )
             i += 1
-        print(" SERIALIZER ERRORS ", serializer.errors)
        
         return Response(
             ProductSerializer(product, context={"request": request}).data,
@@ -357,7 +356,10 @@ class AdminProductDetailAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
     parser_classes = [MultiPartParser, FormParser]
 
+    
+
     def get_object(self, pk):
+        
         try:
             return Product.objects.get(pk=pk)
         except Product.DoesNotExist:
