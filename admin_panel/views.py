@@ -491,8 +491,13 @@ class AdminOrderDetailAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # existing
         new_status = request.data.get("status")
         new_payment_status = request.data.get("payment_status")
+
+        #  ADD THESE
+        courier_name = request.data.get("courier_name")
+        tracking_id = request.data.get("tracking_id")
 
         if new_status:
             order.status = new_status
@@ -500,12 +505,25 @@ class AdminOrderDetailAPIView(APIView):
         if new_payment_status:
             order.payment_status = new_payment_status
 
+        #  SAVE COURIER DETAILS
+        if courier_name is not None:
+            order.courier_name = courier_name
+
+        if tracking_id is not None:
+            order.tracking_id = tracking_id
+
         order.save()
 
         return Response(
-            {"message": "Order updated successfully"},
+            {
+                "message": "Order updated successfully",
+                "status": order.status,
+                "courier_name": order.courier_name,
+                "tracking_id": order.tracking_id,
+            },
             status=status.HTTP_200_OK,
         )
+
 
 
 # -----------------------------
