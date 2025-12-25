@@ -208,7 +208,7 @@ class OrderCreateSerializer(serializers.Serializer):
 # ================= READ SERIALIZERS =================
 
 class OrderItemDetailSerializer(serializers.ModelSerializer):
-    product = serializers.SerializerMethodField()
+    product = ProductSerializer(source="variant.product", read_only=True)
     size = serializers.SerializerMethodField()
 
     class Meta:
@@ -222,15 +222,8 @@ class OrderItemDetailSerializer(serializers.ModelSerializer):
             "color",
         ]
 
-    def get_product(self, obj):
-        if obj.variant and obj.variant.product:
-            return obj.variant.product.name
-        return None
-
     def get_size(self, obj):
-        if obj.variant:
-            return obj.variant.size
-        return None
+        return obj.variant.size if obj.variant else None
 
 
 class OrderDetailSerializer(serializers.ModelSerializer):
@@ -250,6 +243,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "total_amount",
             "payment_status",
             "status",
+            "courier_name",
+            "tracking_id",
             "created_at",
             "address",
             "items",

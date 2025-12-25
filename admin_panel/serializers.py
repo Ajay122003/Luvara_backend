@@ -4,6 +4,7 @@ from django.contrib.auth import authenticate
 from product_collections.models import Collection
 from users.models import User
 from products.models import Product, ProductImage, ProductVariant
+from products.serializers import ProductSerializer
 from orders.models import Order, OrderItem
 from addresses.serializers import AddressSerializer
 from .models import SiteSettings
@@ -118,7 +119,6 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             "order_number",
             "user_email",
 
-            # 🔥 ADD THESE
             "subtotal_amount",
             "discount_amount",
             "shipping_amount",
@@ -127,21 +127,26 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
 
             "payment_status",
             "status",
+            "courier_name",
+            "tracking_id",
             "created_at",
             "address_details",
             "items",
         ]
 
     def get_items(self, obj):
-        return [
-            {
-                "product": item.variant.product.name if item.variant else None,
+        items = []
+        for item in obj.items.all():
+            items.append({
+                "product": ProductSerializer(
+                    item.variant.product
+                ).data if item.variant else None,
                 "size": item.variant.size if item.variant else None,
                 "quantity": item.quantity,
                 "price": item.price,
-            }
-            for item in obj.items.all()
-        ]
+                "color": item.color,
+            })
+        return items
 
     def get_address_details(self, obj):
         address = obj.address
@@ -157,7 +162,14 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             "full_address": address.full_address,
         }
 
-
+class AdminOrderShippingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = [
+            "status",
+            "courier_name",
+            "tracking_id",
+        ]
 
 
 class SiteSettingsSerializer(serializers.ModelSerializer):
