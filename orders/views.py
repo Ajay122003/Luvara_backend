@@ -94,7 +94,10 @@ class UserOrderDetailAPIView(APIView):
         except Order.DoesNotExist:
             return Response({"error": "Order not found"}, status=404)
 
-        serializer = OrderDetailSerializer(order)
+        serializer = OrderDetailSerializer(
+            order,
+            context={"request": request}   # 🔥 THIS IS THE FIX
+        )
 
         settings_obj = SiteSettings.objects.first()
         if not settings_obj:
@@ -115,6 +118,7 @@ class UserOrderDetailAPIView(APIView):
         response["cod_enabled"] = settings_obj.enable_cod
 
         return Response(response)
+
 
 
 class CancelOrderAPIView(APIView):

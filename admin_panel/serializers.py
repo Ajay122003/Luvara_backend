@@ -108,8 +108,8 @@ class AdminOrderListSerializer(serializers.ModelSerializer):
         ]
 
 class AdminOrderDetailSerializer(serializers.ModelSerializer):
-    items = serializers.SerializerMethodField()
     user_email = serializers.CharField(source="user.email", read_only=True)
+    items = serializers.SerializerMethodField()
     address_details = serializers.SerializerMethodField()
 
     class Meta:
@@ -130,6 +130,7 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             "courier_name",
             "tracking_id",
             "created_at",
+
             "address_details",
             "items",
         ]
@@ -138,13 +139,16 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
         items = []
         for item in obj.items.all():
             items.append({
-                "product": ProductSerializer(
-                    item.variant.product
-                ).data if item.variant else None,
-                "size": item.variant.size if item.variant else None,
+                "id": item.id,
                 "quantity": item.quantity,
                 "price": item.price,
                 "color": item.color,
+
+                "size": item.variant.size if item.variant else None,
+
+                "product": ProductSerializer(
+                    item.variant.product
+                ).data if item.variant else None,
             })
         return items
 
@@ -161,6 +165,7 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             "state": address.state,
             "full_address": address.full_address,
         }
+
 
 class AdminOrderShippingSerializer(serializers.ModelSerializer):
     class Meta:
