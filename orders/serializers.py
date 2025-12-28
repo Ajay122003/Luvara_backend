@@ -190,6 +190,7 @@ class OrderCreateSerializer(serializers.Serializer):
                 variant=item.variant,
                 quantity=item.quantity,
                 price=price,
+                color=item.variant.color, 
             )
 
             item.variant.stock -= item.quantity
@@ -208,7 +209,7 @@ class OrderCreateSerializer(serializers.Serializer):
 # ================= READ SERIALIZERS =================
 
 class OrderItemDetailSerializer(serializers.ModelSerializer):
-    product = ProductSerializer(source="variant.product", read_only=True)
+    product = serializers.SerializerMethodField()
     size = serializers.SerializerMethodField()
 
     class Meta:
@@ -222,8 +223,19 @@ class OrderItemDetailSerializer(serializers.ModelSerializer):
             "color",
         ]
 
+    def get_product(self, obj):
+        request = self.context.get("request")   # 🔥 IMPORTANT
+        if obj.variant and obj.variant.product:
+            return ProductSerializer(
+                obj.variant.product,
+                context={"request": request}    # 🔥 PASS REQUEST
+            ).data
+        return None
+
     def get_size(self, obj):
         return obj.variant.size if obj.variant else None
+
+
 
 
 class OrderDetailSerializer(serializers.ModelSerializer):

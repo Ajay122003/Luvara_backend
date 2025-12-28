@@ -479,7 +479,10 @@ class AdminOrderDetailAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        serializer = AdminOrderDetailSerializer(order)
+        serializer = AdminOrderDetailSerializer(
+            order,
+            context={"request": request}   # THIS IS THE FIX
+        )
         return Response(serializer.data)
 
     def put(self, request, pk):
@@ -491,11 +494,8 @@ class AdminOrderDetailAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # existing
         new_status = request.data.get("status")
         new_payment_status = request.data.get("payment_status")
-
-        #  ADD THESE
         courier_name = request.data.get("courier_name")
         tracking_id = request.data.get("tracking_id")
 
@@ -505,7 +505,6 @@ class AdminOrderDetailAPIView(APIView):
         if new_payment_status:
             order.payment_status = new_payment_status
 
-        #  SAVE COURIER DETAILS
         if courier_name is not None:
             order.courier_name = courier_name
 
