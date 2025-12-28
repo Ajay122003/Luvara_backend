@@ -1,7 +1,7 @@
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 import random
-
+from django.core.mail import EmailMessage
 
 def generate_otp():
     return str(random.randint(100000, 999999))
@@ -116,3 +116,49 @@ def send_admin_otp_email(admin_user, otp):
     )
     email.attach_alternative(html_message, "text/html")
     email.send(fail_silently=False)
+
+
+
+# -------------------------------
+# Send Order Status Update Mail
+# -------------------------------
+def send_order_status_update_email(order):
+    print("📧 MAIL FUNCTION CALLED FOR:", order.order_number)
+
+    subject = f" Order Update - {order.order_number}"
+
+    # 🔹 Courier + Tracking block (only if available)
+    courier_block = ""
+    if order.courier_name or order.tracking_id:
+        courier_block = f"""
+
+ Shipping Details:
+Courier Name : {order.courier_name or "Not assigned yet"}
+Tracking ID  : {order.tracking_id or "Not available yet"}
+"""
+
+    message = f"""
+Hi {order.user.email},
+
+Your order has been updated.
+
+ Order Number : {order.order_number}
+ Current Status: {order.status}
+{courier_block}
+
+Thank you for shopping with Luvara Store 
+"""
+
+    email = EmailMessage(
+        subject=subject,
+        body=message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[order.user.email],
+    )
+
+    try:
+        email.send(fail_silently=False)
+        print("✅ MAIL SENT SUCCESSFULLY")
+    except Exception as e:
+        print("❌ MAIL ERROR:", e)
+

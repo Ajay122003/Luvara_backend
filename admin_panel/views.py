@@ -13,7 +13,7 @@ import json
 from .permissions import IsAdminUserCustom
 from .models import SiteSettings, AdminOTP
 from .serializers import *
-from .utils_email import send_admin_otp_email, generate_otp
+from .utils_email import send_admin_otp_email, generate_otp , send_order_status_update_email
 from subscriptions.models import Subscriber
 from users.models import User
 from categories.models import Category
@@ -487,41 +487,66 @@ class AdminOrderDetailAPIView(APIView):
 
     def put(self, request, pk):
         try:
-            order = Order.objects.get(id=pk)
+          order = Order.objects.get(id=pk)
         except Order.DoesNotExist:
-            return Response(
-                {"error": "Order not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+          return Response(
+            {"error": "Order not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
 
+    #  OLD VALUES (important)
+        old_status = order.status
+        old_courier = order.courier_name
+        old_tracking = order.tracking_id
+
+    # 🔹 NEW VALUES FROM REQUEST
         new_status = request.data.get("status")
         new_payment_status = request.data.get("payment_status")
         courier_name = request.data.get("courier_name")
         tracking_id = request.data.get("tracking_id")
 
+    # -------- UPDATE DATA --------
         if new_status:
-            order.status = new_status
+           order.status = new_status
 
         if new_payment_status:
-            order.payment_status = new_payment_status
+           order.payment_status = new_payment_status
 
         if courier_name is not None:
-            order.courier_name = courier_name
+           order.courier_name = courier_name
 
         if tracking_id is not None:
-            order.tracking_id = tracking_id
+           order.tracking_id = tracking_id
 
         order.save()
 
+    # -------- MAIL LOGIC --------
+        send_mail = False
+
+    # 1️⃣ Status changed (ex: PROCESSING)
+        if new_status and new_status != old_status:
+           send_mail = True
+
+    # 2️⃣ Courier / Tracking added later
+        if (
+           (courier_name and courier_name != old_courier) or
+           (tracking_id and tracking_id != old_tracking)
+        ):
+           send_mail = True
+
+        if send_mail:
+           print("📧 ORDER UPDATED, SENDING MAIL...")
+           send_order_status_update_email(order)
+
         return Response(
-            {
-                "message": "Order updated successfully",
-                "status": order.status,
-                "courier_name": order.courier_name,
-                "tracking_id": order.tracking_id,
-            },
-            status=status.HTTP_200_OK,
-        )
+        {
+            "message": "Order updated successfully",
+            "status": order.status,
+            "courier_name": order.courier_name,
+            "tracking_id": order.tracking_id,
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 

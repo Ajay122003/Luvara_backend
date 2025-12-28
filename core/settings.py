@@ -25,7 +25,15 @@ SECRET_KEY = 'django-insecure-p7yjse$hi8n!)=zz(o+-vz4uj1cgp9$0)1f6_139er4!f7m)n#
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["luvarastore.com",
+    "www.luvarastore.com",]
+
+SECURE_SSL_REDIRECT = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://luvarastore.com",
+    "https://www.luvarastore.com",
+]
 
 
 # Application definition
@@ -217,11 +225,17 @@ LOGGING = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",   # React CRA
     "http://localhost:5173",
-    # "luvarastore.com",
-    # "www.luvarastore.com",
+    "luvarastore.com",
+    "www.luvarastore.com",
     # "api.luvarastore.com",
 ]
 
+CORS_ALLOW_ALL_ORIGINS = False
+
+CORS_ALLOWED_ORIGINS = [
+    "https://luvarastore.com",
+    "https://www.luvarastore.com",
+]
 
 
 CORS_ALLOW_ALL_ORIGINS = True  # (dev ku ok, production la strict aakalam)

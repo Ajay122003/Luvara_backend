@@ -7,7 +7,7 @@ from .models import Order, OrderItem, ReturnRequest
 from products.models import Product ,ProductVariant
 from addresses.models import Address
 from products.serializers import ProductSerializer
-from .utils import generate_order_number
+from .utils import generate_order_number ,send_admin_new_order_alert
 from coupons.models import Coupon
 from django.utils import timezone
 from cart.models import CartItem
@@ -202,7 +202,7 @@ class OrderCreateSerializer(serializers.Serializer):
             coupon = validated_data["coupon_obj"]
             coupon.used_count += 1
             coupon.save(update_fields=["used_count"])
-
+        send_admin_new_order_alert(order)
         return order
 
 

@@ -13,7 +13,7 @@ from .serializers import (
 from .models import Order, ReturnRequest
 from admin_panel.models import SiteSettings
 from .utils_invoice import generate_invoice_pdf
-from .utils import send_order_invoice_email
+from .utils import send_order_invoice_email ,send_admin_new_order_alert
 
 
 class OrderCreateAPIView(APIView):
@@ -46,7 +46,7 @@ class OrderCreateAPIView(APIView):
                 order.payment_status = "PENDING"  # Razorpay
 
             order.save()
-
+            send_admin_new_order_alert(order)
             # ---------- Invoice + Email ----------
             pdf_path = generate_invoice_pdf(order)
             send_order_invoice_email(order, pdf_path)
