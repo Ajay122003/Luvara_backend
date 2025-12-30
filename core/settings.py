@@ -217,11 +217,8 @@ LOGGING = {
 
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",   # React CRA
+    "http://localhost:3000",
     "http://localhost:5173",
-    # "luvarastore.com",
-    # "www.luvarastore.com",
-    # "api.luvarastore.com",
 ]
 
 

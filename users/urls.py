@@ -9,5 +9,8 @@ urlpatterns = [
     path("me/", MeView.as_view()),
     path("logout/", LogoutView.as_view()),
     path("me/update/", UpdateProfileView.as_view()),
+
+    path("search/", GlobalSearchView.as_view()),
+
     
 ]

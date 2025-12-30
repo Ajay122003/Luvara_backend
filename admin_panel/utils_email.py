@@ -123,7 +123,7 @@ def send_admin_otp_email(admin_user, otp):
 # Send Order Status Update Mail
 # -------------------------------
 def send_order_status_update_email(order):
-    print("📧 MAIL FUNCTION CALLED FOR:", order.order_number)
+    print(" MAIL FUNCTION CALLED FOR:", order.order_number)
 
     subject = f" Order Update - {order.order_number}"
 
