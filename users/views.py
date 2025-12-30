@@ -131,3 +131,38 @@ class UpdateProfileView(APIView):
         return Response(serializer.errors, status=400)
 
 
+
+
+
+class GlobalSearchView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        query = request.GET.get("q", "").strip()
+
+        if not query:
+            return Response(
+                {"results": []},
+                status=status.HTTP_200_OK
+            )
+
+        # Product search
+        products = Product.objects.filter(
+            Q(name__icontains=query) |
+            Q(description__icontains=query) |
+            Q(category__name__icontains=query)
+        ).distinct()
+
+        product_data = ProductSerializer(
+            products,
+            many=True,
+            context={"request": request}
+        ).data
+
+        return Response(
+            {
+                "count": len(product_data),
+                "products": product_data
+            },
+            status=status.HTTP_200_OK
+        )
