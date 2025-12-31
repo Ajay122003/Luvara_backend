@@ -142,16 +142,26 @@ class GlobalSearchView(APIView):
 
         if not query:
             return Response(
-                {"results": []},
+                {
+                    "count": 0,
+                    "products": []
+                },
                 status=status.HTTP_200_OK
             )
 
-        # Product search
-        products = Product.objects.filter(
-            Q(name__icontains=query) |
-            Q(description__icontains=query) |
-            Q(category__name__icontains=query)
-        ).distinct()
+        # ✅ PRODUCT SEARCH (NAME + SKU + DESCRIPTION + CATEGORY + COLLECTION)
+        products = (
+            Product.objects
+            .filter(
+                Q(name__icontains=query) |                 # product name
+                Q(sku__icontains=query) |                  # ✅ product number / SKU
+                Q(description__icontains=query) |          # description
+                Q(category__name__icontains=query) |       # category name
+                Q(collections__name__icontains=query)      # ✅ collection name
+            )
+            .prefetch_related("images", "variants", "collections")
+            .distinct()
+        )
 
         product_data = ProductSerializer(
             products,

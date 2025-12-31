@@ -48,4 +48,9 @@ urlpatterns = [
     # Coupons
     path("coupons/", AdminCouponListCreateAPIView.as_view()),
     path("coupons/<int:pk>/", AdminCouponDetailAPIView.as_view()),
+
+    #offers
+    path("offers/", AdminOfferListCreateAPIView.as_view()),
+    path("offers/<int:pk>/", AdminOfferDetailAPIView.as_view()),
+
 ]

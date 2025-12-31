@@ -63,6 +63,7 @@ INSTALLED_APPS = [
 
     "subscriptions",
     "admin_panel",
+    "offers",
 ]
 
 MIDDLEWARE = [
