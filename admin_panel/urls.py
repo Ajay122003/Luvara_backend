@@ -8,6 +8,8 @@ urlpatterns = [
     path("test/", AdminTestAPIView.as_view()),
     path("users/", AdminUserListView.as_view()),
     path("subscriptions/", AdminSubscriptionListView.as_view()),
+    path("forgot-password/", AdminForgotPasswordAPIView.as_view()),
+    path("reset-password/", AdminResetPasswordAPIView.as_view()),
     
 
 

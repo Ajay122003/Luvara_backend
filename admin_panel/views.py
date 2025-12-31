@@ -130,6 +130,55 @@ class AdminChangePasswordAPIView(APIView):
         return Response(serializer.errors, status=400)
     
 
+class AdminForgotPasswordAPIView(APIView):
+    def post(self, request):
+        serializer = AdminForgotPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data["email"]
+            admin = User.objects.get(email=email, is_staff=True)
+
+            otp = generate_otp()
+            AdminOTP.objects.create(admin=admin, otp=otp)
+            send_admin_otp_email(admin, otp)
+
+            return Response({"message": "OTP sent to admin email"})
+
+        return Response(serializer.errors, status=400)
+
+
+
+class AdminResetPasswordAPIView(APIView):
+    print("RESET PASSWORD API HIT")
+    def post(self, request):
+        serializer = AdminResetPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data["email"]
+            otp = serializer.validated_data["otp"]
+            new_password = serializer.validated_data["new_password"]
+
+            try:
+                admin = User.objects.get(email=email, is_staff=True)
+            except User.DoesNotExist:
+                return Response({"error": "Admin not found"}, status=404)
+
+            try:
+                latest_otp = AdminOTP.objects.filter(admin=admin).latest("created_at")
+            except AdminOTP.DoesNotExist:
+                return Response({"error": "OTP not found"}, status=400)
+
+            if latest_otp.is_expired():
+                return Response({"error": "OTP expired"}, status=400)
+
+            if latest_otp.otp != otp:
+                return Response({"error": "Invalid OTP"}, status=400)
+
+            admin.set_password(new_password)
+            admin.save()
+            latest_otp.delete()
+
+            return Response({"message": "Password reset successful"})
+
+        return Response(serializer.errors, status=400)
 
 
 
@@ -311,29 +360,37 @@ class AdminCollectionDetailAPIView(APIView):
 # -----------------------------
 # PRODUCT MANAGEMENT
 # -----------------------------
+# -----------------------------
+# PRODUCT LIST + CREATE
+# -----------------------------
 class AdminProductListCreateAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
     parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request):
-        products = Product.objects.all().order_by("-id")
+        products = (
+            Product.objects
+            .all()
+            .prefetch_related("images", "variants", "collections")
+            .order_by("-id")
+        )
+
         serializer = ProductSerializer(
             products, many=True, context={"request": request}
         )
         return Response(serializer.data)
 
     def post(self, request):
-        data = request.data.copy()
+        data = request.data
 
-        #  CREATE PRODUCT FIRST
         serializer = AdminProductCreateSerializer(data=data)
         if not serializer.is_valid():
-            print(" PRODUCT ERRORS ", serializer.errors)
+            print("PRODUCT CREATE ERRORS:", serializer.errors)
             return Response(serializer.errors, status=400)
 
         product = serializer.save()
 
-        #  CREATE VARIANTS MANUALLY
+        # CREATE VARIANTS
         i = 0
         while f"variants[{i}][size]" in request.data:
             ProductVariant.objects.create(
@@ -343,25 +400,27 @@ class AdminProductListCreateAPIView(APIView):
                 stock=int(request.data.get(f"variants[{i}][stock]", 0)),
             )
             i += 1
-       
+
         return Response(
             ProductSerializer(product, context={"request": request}).data,
             status=201
         )
 
-        
 
-
+# -----------------------------
+# PRODUCT DETAIL / UPDATE / DELETE
+# -----------------------------
 class AdminProductDetailAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
     parser_classes = [MultiPartParser, FormParser]
 
-    
-
     def get_object(self, pk):
-        
         try:
-            return Product.objects.get(pk=pk)
+            return (
+                Product.objects
+                .prefetch_related("images", "variants", "collections")
+                .get(pk=pk)
+            )
         except Product.DoesNotExist:
             return None
 
@@ -381,21 +440,19 @@ class AdminProductDetailAPIView(APIView):
         if not product:
             return Response({"error": "Product not found"}, status=404)
 
-        data = request.data.copy()
+        data = request.data
 
         serializer = AdminProductCreateSerializer(
-            product,
-            data=data,
-            partial=True
+            product, data=data, partial=True
         )
 
         if not serializer.is_valid():
-            print(" PRODUCT UPDATE ERRORS ", serializer.errors)
+            print("PRODUCT UPDATE ERRORS:", serializer.errors)
             return Response(serializer.errors, status=400)
 
         updated_product = serializer.save()
 
-        # UPDATE VARIANTS (REPLACE ALL)
+        # REPLACE VARIANTS
         ProductVariant.objects.filter(product=updated_product).delete()
 
         if "variants" in request.data:
@@ -414,9 +471,11 @@ class AdminProductDetailAPIView(APIView):
                     color=v.get("color"),
                     stock=v.get("stock", 0),
                 )
-        print(" SERIALIZER ERRORS ", serializer.errors)
+
         return Response(
-            ProductSerializer(updated_product, context={"request": request}).data,
+            ProductSerializer(
+                updated_product, context={"request": request}
+            ).data,
             status=200
         )
 
@@ -429,6 +488,10 @@ class AdminProductDetailAPIView(APIView):
         product.delete()
         return Response({"message": "Product deleted"}, status=200)
 
+
+# -----------------------------
+# DELETE SINGLE PRODUCT IMAGE
+# -----------------------------
 class AdminDeleteProductImageAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
 

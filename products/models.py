@@ -16,6 +16,8 @@ class Product(models.Model):
     )
 
     name = models.CharField(max_length=255)
+
+    sku = models.CharField(max_length=50, unique=True,null=True,blank=True,help_text="Unique Product Number / SKU" )
     description = models.TextField(blank=True)
 
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -35,7 +37,7 @@ class Product(models.Model):
         return self.sale_price or self.price
 
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.sku})"
 
 
 class ProductVariant(models.Model):

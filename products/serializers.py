@@ -58,6 +58,7 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "sku",  
             "description",
             "price",
             "sale_price",
@@ -106,6 +107,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             "name",
+            "sku",
             "description",
             "price",
             "sale_price",
