@@ -1,6 +1,8 @@
 from django.db import models
 from categories.models import Category
 from product_collections.models import Collection  
+from offers.models import Offer
+from django.utils import timezone
 
 class Product(models.Model):
     category = models.ForeignKey(
@@ -14,7 +16,14 @@ class Product(models.Model):
         related_name="products",
         blank=True
     )
-
+    
+    offer = models.ForeignKey(
+        Offer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products"
+    )
     name = models.CharField(max_length=255)
 
     sku = models.CharField(max_length=50, unique=True,null=True,blank=True,help_text="Unique Product Number / SKU" )
@@ -34,7 +43,37 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def get_effective_price(self):
-        return self.sale_price or self.price
+        """
+        Final price priority:
+        1. Active Offer (with deadline)
+        2. Manual sale_price
+        3. Normal price
+        """
+        now = timezone.now()
+
+        # Priority 1: Offer price
+        if (
+            self.offer
+            and self.offer.is_active
+            and self.offer.start_date <= now
+            and self.offer.end_date >= now
+        ):
+            if self.offer.discount_type == "PERCENT":
+                discount = (self.offer.discount_value / 100) * self.price
+                return round(self.price - discount, 2)
+
+            if self.offer.discount_type == "FLAT":
+                return max(self.price - self.offer.discount_value, 0)
+
+        # Priority 2: Manual sale price
+        if self.sale_price:
+            return self.sale_price
+
+        # Priority 3: Normal price
+        return self.price
+
+    def __str__(self):
+        return f"{self.name} ({self.sku})"
 
     def __str__(self):
         return f"{self.name} ({self.sku})"

@@ -10,6 +10,7 @@ from addresses.serializers import AddressSerializer
 from .models import SiteSettings
 from django.utils import timezone
 from coupons.models import Coupon
+from offers.models import Offer
 
 
 class AdminLoginSerializer(serializers.Serializer):
@@ -302,5 +303,73 @@ class AdminCouponSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "usage_limit": "Usage limit cannot be less than used count"
             })
+
+        return data
+
+
+
+
+
+class AdminOfferSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Offer
+        fields = [
+            "id",
+            "title",
+            "slug",
+            "description",
+            "discount_type",
+            "discount_value",
+            "image",
+            "image_url",
+            "start_date",
+            "end_date",
+            "is_active",
+            "created_at",
+        ]
+        read_only_fields = ["slug", "created_at"]
+
+    def get_image_url(self, obj):
+        request = self.context.get("request")
+        if obj.image and request:
+            return request.build_absolute_uri(obj.image.url)
+        return None
+
+    def validate(self, data):
+        start_date = data.get(
+            "start_date",
+            self.instance.start_date if self.instance else None
+        )
+        end_date = data.get(
+            "end_date",
+            self.instance.end_date if self.instance else None
+        )
+        discount_type = data.get(
+            "discount_type",
+            self.instance.discount_type if self.instance else None
+        )
+        discount_value = data.get(
+            "discount_value",
+            self.instance.discount_value if self.instance else None
+        )
+
+        # ✅ Date validation
+        if start_date and end_date and start_date >= end_date:
+            raise serializers.ValidationError(
+                {"end_date": "End date must be after start date"}
+            )
+
+        # ✅ Discount validation
+        if discount_type == "PERCENT" and discount_value > 90:
+            raise serializers.ValidationError(
+                {"discount_value": "Percentage discount cannot exceed 90%"}
+            )
+
+        if discount_value < 0:
+            raise serializers.ValidationError(
+                {"discount_value": "Discount value cannot be negative"}
+            )
 
         return data

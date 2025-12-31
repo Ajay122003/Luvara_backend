@@ -25,6 +25,8 @@ from products.serializers import *
 from orders.models import Order, OrderItem
 from coupons.models import Coupon
 from coupons.serializers import *
+from offers.models import Offer
+from admin_panel.serializers import AdminOfferSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -871,3 +873,86 @@ class AdminCouponDetailAPIView(APIView):
 
         coupon.delete()
         return Response({"message": "Coupon deleted"}, status=200)
+
+
+
+
+
+
+# -----------------------------
+# OFFER MANAGEMENT
+# -----------------------------
+class AdminOfferListCreateAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        offers = Offer.objects.all().order_by("-created_at")
+        serializer = AdminOfferSerializer(
+            offers,
+            many=True,
+            context={"request": request}
+        )
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = AdminOfferSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "Offer created", "data": serializer.data},
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AdminOfferDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_object(self, pk):
+        try:
+            return Offer.objects.get(pk=pk)
+        except Offer.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        offer = self.get_object(pk)
+        if not offer:
+            return Response({"error": "Offer not found"}, status=404)
+
+        serializer = AdminOfferSerializer(
+            offer,
+            context={"request": request}
+        )
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        offer = self.get_object(pk)
+        if not offer:
+            return Response({"error": "Offer not found"}, status=404)
+
+        serializer = AdminOfferSerializer(
+            offer,
+            data=request.data,
+            partial=True,
+            context={"request": request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "Offer updated", "data": serializer.data}
+            )
+
+        return Response(serializer.errors, status=400)
+
+    def delete(self, request, pk):
+        offer = self.get_object(pk)
+        if not offer:
+            return Response({"error": "Offer not found"}, status=404)
+
+        offer.delete()
+        return Response({"message": "Offer deleted"}, status=200)

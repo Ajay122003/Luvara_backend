@@ -35,6 +35,7 @@ urlpatterns = [
     path("api/payments/", include("payments.urls")),
     path("api/address/", include("addresses.urls")),
     path("api/admin-panel/", include("admin_panel.urls")),
+    path("api/offers/", include("offers.urls")),
 ]
 
 # Media serve (dev only)
