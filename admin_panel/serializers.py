@@ -30,6 +30,18 @@ class AdminLoginSerializer(serializers.Serializer):
 
         return user
 
+class AdminForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, email):
+        if not User.objects.filter(email=email, is_staff=True).exists():
+            raise serializers.ValidationError("Admin not found")
+        return email
+    
+class AdminResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField()
+    new_password = serializers.CharField(min_length=6)
 
 
 
@@ -51,6 +63,7 @@ class AdminProductCreateSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             "name",
+            "sku", 
             "description",
             "price",
             "sale_price",
@@ -85,12 +98,13 @@ class AdminProductCreateSerializer(serializers.ModelSerializer):
         if collections is not None:
             instance.collections.set(collections)
 
-        if images is not None:
-            ProductImage.objects.filter(product=instance).delete()
+        if images:
             for img in images:
                 ProductImage.objects.create(product=instance, image=img)
 
         return instance
+
+        
 
 class AdminOrderListSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source="user.email", read_only=True)
