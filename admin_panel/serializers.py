@@ -147,8 +147,10 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
                 "size": item.variant.size if item.variant else None,
 
                 "product": ProductSerializer(
-                    item.variant.product
-                ).data if item.variant else None,
+    item.variant.product,
+    context=self.context   # ⭐ THIS IS THE FIX
+).data if item.variant else None,
+
             })
         return items
 

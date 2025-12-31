@@ -499,7 +499,7 @@ class AdminOrderDetailAPIView(APIView):
         old_courier = order.courier_name
         old_tracking = order.tracking_id
 
-    # 🔹 NEW VALUES FROM REQUEST
+    #  NEW VALUES FROM REQUEST
         new_status = request.data.get("status")
         new_payment_status = request.data.get("payment_status")
         courier_name = request.data.get("courier_name")
@@ -523,11 +523,11 @@ class AdminOrderDetailAPIView(APIView):
     # -------- MAIL LOGIC --------
         send_mail = False
 
-    # 1️⃣ Status changed (ex: PROCESSING)
+    #  Status changed (ex: PROCESSING)
         if new_status and new_status != old_status:
            send_mail = True
 
-    # 2️⃣ Courier / Tracking added later
+    #  Courier / Tracking added later
         if (
            (courier_name and courier_name != old_courier) or
            (tracking_id and tracking_id != old_tracking)
@@ -535,7 +535,7 @@ class AdminOrderDetailAPIView(APIView):
            send_mail = True
 
         if send_mail:
-           print("📧 ORDER UPDATED, SENDING MAIL...")
+           print(" ORDER UPDATED, SENDING MAIL...")
            send_order_status_update_email(order)
 
         return Response(
@@ -664,7 +664,11 @@ class AdminDashboardStatsAPIView(APIView):
             img = ProductImage.objects.filter(
                 product_id=item["variant__product_id"]
             ).first()
-            item["image"] = img.image.url if img else None
+            item["image"] = ( request.build_absolute_uri(img.image.url)
+                               if img and img.image
+                                  else None
+                              )
+
 
         # ---------------- LOW STOCK (BASED ON VARIANTS) ----------------
         LOW_STOCK_THRESHOLD = 5
