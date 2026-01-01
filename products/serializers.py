@@ -39,20 +39,35 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 
 
 # --------------------------------------------------
-# Product Read Serializer (USER SIDE)
+# Product Read Serializer (USER SIDE + OFFER DETAIL)
 # --------------------------------------------------
 class ProductSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
     variants = ProductVariantSerializer(many=True, read_only=True)
 
-    category_name = serializers.CharField(source="category.name", read_only=True)
+    #  MAIN IMAGE (FOR OFFER / LIST PAGE)
+    image_url = serializers.SerializerMethodField()
+
+    category_name = serializers.CharField(
+        source="category.name",
+        read_only=True
+    )
+
     collection_names = serializers.SerializerMethodField()
 
     offer_title = serializers.CharField(
         source="offer.title",
         read_only=True
     )
+    offer_end_date = serializers.DateTimeField(
+        source="offer.end_date",
+        read_only=True
+    )
 
+    offer_is_active = serializers.BooleanField(
+        source="offer.is_active",
+        read_only=True
+    )
     effective_price = serializers.SerializerMethodField()
 
     collections = serializers.PrimaryKeyRelatedField(
@@ -70,29 +85,49 @@ class ProductSerializer(serializers.ModelSerializer):
             "description",
             "price",
             "sale_price",
-            "effective_price",
+            "effective_price",   #  FINAL PRICE
+            "image_url",         #  PRIMARY IMAGE
             "offer",
             "offer_title",
+             "offer_end_date", 
+             "offer_is_active",
             "colors",
             "category",
             "category_name",
             "collections",
             "collection_names",
             "variants",
-            "images",
+            "images",            # full gallery
             "is_active",
             "created_at",
         ]
 
+    # -----------------------------
+    # FIRST IMAGE ONLY (SAFE)
+    # -----------------------------
+    def get_image_url(self, obj):
+        request = self.context.get("request")
+        image = obj.images.first()   #  FIRST IMAGE
+
+        if image:
+            if request:
+                return request.build_absolute_uri(image.image.url)
+            return image.image.url
+        return None
+
+    # -----------------------------
+    # COLLECTION NAMES
+    # -----------------------------
     def get_collection_names(self, obj):
         return [c.name for c in obj.collections.all()]
 
-    def get_effective_price(self, obj):
-        """
-        Same logic as Product model
-        """
+    # -----------------------------
+    # EFFECTIVE PRICE (OFFER > SALE > PRICE)
+    # -----------------------------
+    def get_effective_price(self, obj):   #  obj MUST BE HERE
         now = timezone.now()
 
+        #  OFFER PRICE
         if (
             obj.offer
             and obj.offer.is_active
@@ -101,15 +136,18 @@ class ProductSerializer(serializers.ModelSerializer):
         ):
             if obj.offer.discount_type == "PERCENT":
                 discount = (obj.offer.discount_value / 100) * obj.price
-                return round(obj.price - discount, 2)
+                return round(obj.price - discount)
 
             if obj.offer.discount_type == "FLAT":
                 return max(obj.price - obj.offer.discount_value, 0)
 
+        #  SALE PRICE
         if obj.sale_price:
-            return float(obj.sale_price)
+            return obj.sale_price
 
-        return float(obj.price)
+        #  NORMAL PRICE
+        return obj.price
+
 
 
 # --------------------------------------------------

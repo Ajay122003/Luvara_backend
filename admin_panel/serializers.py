@@ -11,6 +11,7 @@ from .models import SiteSettings
 from django.utils import timezone
 from coupons.models import Coupon
 from offers.models import Offer
+from django.utils.dateparse import parse_datetime
 
 
 class AdminLoginSerializer(serializers.Serializer):
@@ -60,6 +61,12 @@ class AdminProductCreateSerializer(serializers.ModelSerializer):
         required=False
     )
 
+    offer = serializers.PrimaryKeyRelatedField(
+        queryset=Offer.objects.all(),
+        required=False,
+        allow_null=True
+    )
+
     class Meta:
         model = Product
         fields = [
@@ -69,11 +76,24 @@ class AdminProductCreateSerializer(serializers.ModelSerializer):
             "price",
             "sale_price",
             "category",
+            "offer", 
             "collections",
             "is_active",
             "images",
         ]
+    
+    def validate(self, data):
+        offer = data.get("offer")
+        sale_price = data.get("sale_price")
 
+        if offer and sale_price:
+           raise serializers.ValidationError({
+            "offer": "Remove offer before setting sale price"
+        })
+
+        return data
+
+    
     def create(self, validated_data):
         images = validated_data.pop("images", [])
         collections = validated_data.pop("collections", [])
@@ -92,18 +112,27 @@ class AdminProductCreateSerializer(serializers.ModelSerializer):
         images = validated_data.pop("images", None)
         collections = validated_data.pop("collections", None)
 
+    # 🔥 OFFER LOGIC FIX
+        offer = validated_data.get("offer", None)
+
+        if offer:
+           instance.sale_price = None  # ✅ AUTO REMOVE SALE PRICE
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+
         instance.save()
 
         if collections is not None:
-            instance.collections.set(collections)
+           instance.collections.set(collections)
 
         if images:
-            for img in images:
-                ProductImage.objects.create(product=instance, image=img)
+           for img in images:
+               ProductImage.objects.create(product=instance, image=img)
 
         return instance
+
+
 
         
 
@@ -312,7 +341,10 @@ class AdminCouponSerializer(serializers.ModelSerializer):
 
 class AdminOfferSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField(read_only=True)
-
+    products_count = serializers.IntegerField(
+        source="products.count",
+        read_only=True
+    )
     class Meta:
         model = Offer
         fields = [
@@ -324,6 +356,7 @@ class AdminOfferSerializer(serializers.ModelSerializer):
             "discount_value",
             "image",
             "image_url",
+            "products_count",
             "start_date",
             "end_date",
             "is_active",
@@ -337,39 +370,42 @@ class AdminOfferSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.image.url)
         return None
 
+    # 🔥🔥🔥 ADD THIS METHOD HERE 🔥🔥🔥
     def validate(self, data):
-        start_date = data.get(
-            "start_date",
+        start_date = data.get("start_date") or (
             self.instance.start_date if self.instance else None
         )
-        end_date = data.get(
-            "end_date",
+        end_date = data.get("end_date") or (
             self.instance.end_date if self.instance else None
         )
-        discount_type = data.get(
-            "discount_type",
+        discount_type = data.get("discount_type") or (
             self.instance.discount_type if self.instance else None
         )
-        discount_value = data.get(
-            "discount_value",
+        discount_value = data.get("discount_value") or (
             self.instance.discount_value if self.instance else None
         )
 
+        # ✅ Ensure datetime objects (multipart fix)
+        if isinstance(start_date, str):
+            start_date = parse_datetime(start_date)
+        if isinstance(end_date, str):
+            end_date = parse_datetime(end_date)
+
         # ✅ Date validation
         if start_date and end_date and start_date >= end_date:
-            raise serializers.ValidationError(
-                {"end_date": "End date must be after start date"}
-            )
+            raise serializers.ValidationError({
+                "end_date": "End date must be after start date"
+            })
 
         # ✅ Discount validation
-        if discount_type == "PERCENT" and discount_value > 90:
-            raise serializers.ValidationError(
-                {"discount_value": "Percentage discount cannot exceed 90%"}
-            )
+        if discount_value is not None and discount_value < 0:
+            raise serializers.ValidationError({
+                "discount_value": "Discount value cannot be negative"
+            })
 
-        if discount_value < 0:
-            raise serializers.ValidationError(
-                {"discount_value": "Discount value cannot be negative"}
-            )
+        if discount_type == "PERCENT" and discount_value > 90:
+            raise serializers.ValidationError({
+                "discount_value": "Percentage discount cannot exceed 90%"
+            })
 
         return data
