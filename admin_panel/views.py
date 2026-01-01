@@ -882,10 +882,13 @@ class AdminCouponDetailAPIView(APIView):
 # -----------------------------
 # OFFER MANAGEMENT
 # -----------------------------
+
+
 class AdminOfferListCreateAPIView(APIView):
     permission_classes = [IsAdminUserCustom]
     parser_classes = [MultiPartParser, FormParser]
 
+    # LIST OFFERS
     def get(self, request):
         offers = Offer.objects.all().order_by("-created_at")
         serializer = AdminOfferSerializer(
@@ -893,20 +896,27 @@ class AdminOfferListCreateAPIView(APIView):
             many=True,
             context={"request": request}
         )
-        return Response(serializer.data)
+        return Response(serializer.data, status=200)
 
+    # CREATE OFFER
     def post(self, request):
         serializer = AdminOfferSerializer(
             data=request.data,
             context={"request": request}
         )
-        if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {"message": "Offer created", "data": serializer.data},
-                status=status.HTTP_201_CREATED
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        if not serializer.is_valid():
+            print("❌ OFFER CREATE ERRORS:", serializer.errors)
+            return Response(serializer.errors, status=400)
+
+        serializer.save()
+        return Response(
+            {
+                "message": "Offer created successfully",
+                "data": serializer.data
+            },
+            status=status.HTTP_201_CREATED
+        )
 
 
 class AdminOfferDetailAPIView(APIView):
@@ -919,21 +929,29 @@ class AdminOfferDetailAPIView(APIView):
         except Offer.DoesNotExist:
             return None
 
+    # GET SINGLE OFFER
     def get(self, request, pk):
         offer = self.get_object(pk)
         if not offer:
-            return Response({"error": "Offer not found"}, status=404)
+            return Response(
+                {"error": "Offer not found"},
+                status=404
+            )
 
         serializer = AdminOfferSerializer(
             offer,
             context={"request": request}
         )
-        return Response(serializer.data)
+        return Response(serializer.data, status=200)
 
+    # UPDATE OFFER
     def put(self, request, pk):
         offer = self.get_object(pk)
         if not offer:
-            return Response({"error": "Offer not found"}, status=404)
+            return Response(
+                {"error": "Offer not found"},
+                status=404
+            )
 
         serializer = AdminOfferSerializer(
             offer,
@@ -941,18 +959,36 @@ class AdminOfferDetailAPIView(APIView):
             partial=True,
             context={"request": request}
         )
-        if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {"message": "Offer updated", "data": serializer.data}
-            )
 
-        return Response(serializer.errors, status=400)
+        if not serializer.is_valid():
+            print("OFFER UPDATE ERRORS:", serializer.errors)
+            return Response(serializer.errors, status=400)
 
-    def delete(self, request, pk):
-        offer = self.get_object(pk)
-        if not offer:
-            return Response({"error": "Offer not found"}, status=404)
+        serializer.save()
+        return Response(
+            {
+                "message": "Offer updated successfully",
+                "data": serializer.data
+            },
+            status=200
+        )
 
-        offer.delete()
-        return Response({"message": "Offer deleted"}, status=200)
+    
+    # DELETE OFFER
+def delete(self, request, pk):
+    offer = self.get_object(pk)
+    if not offer:
+        return Response(
+            {"error": "Offer not found"},
+            status=404
+        )
+
+    #  Clear offer from products (safe)
+    offer.products.update(offer=None)
+
+    offer.delete()
+    return Response(
+        {"message": "Offer deleted successfully"},
+        status=200
+    )
+

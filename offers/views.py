@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.utils import timezone
 from .models import Offer
-from .serializers import OfferSerializer
+from .serializers import *
 
 
 # ---------------------------------
@@ -15,8 +15,11 @@ class OfferListAPIView(APIView):
     def get(self, request):
         now = timezone.now()
 
-        offers = Offer.objects.all()
-
+        offers = Offer.objects.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gt=now   # 🔥 STRICT DEADLINE
+        ).order_by("-created_at")
 
         serializer = OfferSerializer(
             offers,
@@ -40,7 +43,7 @@ class OfferDetailAPIView(APIView):
                 slug=slug,
                 is_active=True,
                 start_date__lte=now,
-                end_date__gte=now
+                end_date__gt=now   #  SAME STRICT CHECK
             )
         except Offer.DoesNotExist:
             return Response(
@@ -48,10 +51,8 @@ class OfferDetailAPIView(APIView):
                 status=404
             )
 
-        serializer = OfferSerializer(
+        serializer = OfferDetailSerializer(
             offer,
             context={"request": request}
         )
         return Response(serializer.data, status=200)
-
-
