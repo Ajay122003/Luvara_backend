@@ -44,32 +44,35 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-def get_effective_price(self):
-    now = timezone.now()
+    def get_effective_price(self):
+        now = timezone.now()
 
-    # Priority 1: Offer price
-    if (
-        self.offer
-        and self.offer.is_active
-        and self.offer.start_date <= now
-        and self.offer.end_date >= now
-    ):
-        if self.offer.discount_type == "PERCENT":
-            discount = (Decimal(self.offer.discount_value) / Decimal("100")) * self.price
-            return (self.price - discount).quantize(Decimal("0.01"))
+        # 1️⃣ OFFER PRICE
+        if (
+            self.offer
+            and self.offer.is_active
+            and self.offer.start_date <= now
+            and self.offer.end_date >= now
+        ):
+            if self.offer.discount_type == "PERCENT":
+                discount = (
+                    Decimal(self.offer.discount_value) / Decimal("100")
+                ) * self.price
+                return (self.price - discount).quantize(Decimal("0.01"))
 
-        if self.offer.discount_type == "FLAT":
-            return max(
-                (self.price - Decimal(self.offer.discount_value)).quantize(Decimal("0.01")),
-                Decimal("0.00")
-            )
+            if self.offer.discount_type == "FLAT":
+                return max(
+                    (self.price - Decimal(self.offer.discount_value))
+                    .quantize(Decimal("0.01")),
+                    Decimal("0.00")
+                )
 
-    # Priority 2: Manual sale price
-    if self.sale_price:
-        return self.sale_price.quantize(Decimal("0.01"))
+        # 2️⃣ SALE PRICE
+        if self.sale_price:
+            return self.sale_price.quantize(Decimal("0.01"))
 
-    # Priority 3: Normal price
-    return self.price.quantize(Decimal("0.01"))
+        # 3️⃣ NORMAL PRICE
+        return self.price.quantize(Decimal("0.01"))
 
 
 
