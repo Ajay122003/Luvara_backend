@@ -25,11 +25,11 @@ def generate_invoice_pdf(order):
     c.drawString(30, y, f"Order Date: {order.created_at.strftime('%d-%m-%Y')}")
     y -= 30
 
-    # ================= BILLING ADDRESS =================
+    # ================= BILLING / DELIVERY ADDRESS =================
     address = order.address
     if address:
         c.setFont("Helvetica-Bold", 14)
-        c.drawString(30, y, "Billing Address:")
+        c.drawString(30, y, "Delivery Address:")
         y -= 20
 
         c.setFont("Helvetica", 12)
@@ -51,15 +51,22 @@ def generate_invoice_pdf(order):
 
     c.setFont("Helvetica-Bold", 12)
     c.drawString(30, y, "Product")
-    c.drawString(250, y, "Qty")
-    c.drawString(300, y, "Price")
+    c.drawString(240, y, "Qty")
+    c.drawString(290, y, "Unit Price")
     c.drawString(380, y, "Total")
     y -= 20
 
     c.setFont("Helvetica", 12)
 
     for item in order.items.all():
-        total = item.price * item.quantity
+        # 🔥 SAFE PRICE FETCH (NO CRASH)
+        unit_price = (
+            getattr(item, "unit_price", None)
+            or getattr(item, "original_price", None)
+            or 0
+        )
+
+        total = unit_price * item.quantity
 
         product_name = (
             item.variant.product.name
@@ -67,15 +74,16 @@ def generate_invoice_pdf(order):
             else "N/A"
         )
 
-        c.drawString(30, y, product_name[:25])
-        c.drawString(250, y, str(item.quantity))
-        c.drawString(300, y, f"₹{item.price}")
+        c.drawString(30, y, product_name[:30])
+        c.drawString(240, y, str(item.quantity))
+        c.drawString(290, y, f"₹{unit_price}")
         c.drawString(380, y, f"₹{total}")
 
         y -= 20
         if y < 100:
             c.showPage()
             y = height - 100
+            c.setFont("Helvetica", 12)
 
     # ================= PRICE SUMMARY =================
     y -= 30

@@ -13,95 +13,115 @@ from .serializers import (
 from .models import Order, ReturnRequest
 from admin_panel.models import SiteSettings
 from .utils_invoice import generate_invoice_pdf
-from .utils import send_order_invoice_email ,send_admin_new_order_alert
+from .utils import send_order_invoice_email,send_admin_new_order_alert
 
 
+# =====================================================
+# CREATE ORDER
+# =====================================================
 class OrderCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         settings_obj = SiteSettings.objects.first()
-
         payment_method = request.data.get("payment_method", "ONLINE")
 
-        # ---------- COD availability ----------
+        # ---------- COD CHECK ----------
         if payment_method == "COD":
             if not settings_obj or not settings_obj.enable_cod:
                 return Response(
-                    {"error": "COD is disabled"},
+                    {"error": "Cash on Delivery is disabled"},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
         serializer = OrderCreateSerializer(
-            data=request.data, context={"request": request}
+            data=request.data,
+            context={"request": request}
         )
 
-        if serializer.is_valid():
-            order = serializer.save()
-
-            # ---------- Payment status ----------
-            if payment_method == "COD":
-                order.payment_status = "COD"
-            else:
-                order.payment_status = "PENDING"  # Razorpay
-
-            order.save()
-            send_admin_new_order_alert(order)
-            # ---------- Invoice + Email ----------
-            pdf_path = generate_invoice_pdf(order)
-            send_order_invoice_email(order, pdf_path)
-
+        if not serializer.is_valid():
+            print("❌ ORDER CREATE ERROR:", serializer.errors)
             return Response(
-                {
-                    "message": "Order created successfully",
-                    "order_id": order.id,
-                    "order_number": order.order_number,
-
-                    # ---- PRICE BREAKUP ----
-                    "subtotal": float(order.subtotal_amount),
-                    "discount": float(order.discount_amount),
-                    "shipping": float(order.shipping_amount),
-                    "gst_percentage": float(order.gst_percentage),
-                    "gst_amount": float(order.gst_amount),
-                    "total_amount": float(order.total_amount),
-
-                    "payment_status": order.payment_status,
-                    "coupon_code": (request.data.get("coupon_code") or "").strip()
-
-                    or None,
-                },
-                status=status.HTTP_201_CREATED,
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
             )
-        print("ORDER CREATE ERROR ", serializer.errors)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        order = serializer.save()
+
+        # ---------- PAYMENT STATUS ----------
+        if payment_method == "COD":
+            order.payment_status = "COD"
+        else:
+            order.payment_status = "PENDING"  # Razorpay
+
+        order.save(update_fields=["payment_status"])
+        send_admin_new_order_alert(order)
+
+        # ---------- INVOICE + EMAIL ----------
+        pdf_path = generate_invoice_pdf(order)
+        send_order_invoice_email(order, pdf_path)
+
+        return Response(
+            {
+                "message": "Order created successfully",
+                "order_id": order.id,
+                "order_number": order.order_number,
+
+                # PRICE BREAKUP
+                "subtotal": float(order.subtotal_amount),
+                "discount": float(order.discount_amount),
+                "shipping": float(order.shipping_amount),
+                "gst_percentage": float(order.gst_percentage),
+                "gst_amount": float(order.gst_amount),
+                "total_amount": float(order.total_amount),
+
+                "payment_status": order.payment_status,
+                "coupon_code": request.data.get("coupon_code") or None,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
+# =====================================================
+# USER ORDER LIST
+# =====================================================
 class UserOrderListAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        orders = Order.objects.filter(user=request.user).order_by("-created_at")
+        orders = (
+            Order.objects
+            .filter(user=request.user)
+            .order_by("-created_at")
+        )
         serializer = OrderListSerializer(orders, many=True)
         return Response(serializer.data)
 
 
+# =====================================================
+# USER ORDER DETAIL
+# =====================================================
 class UserOrderDetailAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, order_id):
         try:
-            order = Order.objects.get(id=order_id, user=request.user)
+            order = Order.objects.get(
+                id=order_id,
+                user=request.user
+            )
         except Order.DoesNotExist:
-            return Response({"error": "Order not found"}, status=404)
+            return Response(
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         serializer = OrderDetailSerializer(
             order,
-            context={"request": request}   # 🔥 THIS IS THE FIX
+            context={"request": request}
         )
 
-        settings_obj = SiteSettings.objects.first()
-        if not settings_obj:
-            settings_obj = SiteSettings.objects.create()
+        settings_obj, _ = SiteSettings.objects.get_or_create(id=1)
 
         response = serializer.data
 
@@ -120,17 +140,26 @@ class UserOrderDetailAPIView(APIView):
         return Response(response)
 
 
-
+# =====================================================
+# CANCEL ORDER
+# =====================================================
 class CancelOrderAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, order_id):
         try:
-            order = Order.objects.get(id=order_id, user=request.user)
+            order = Order.objects.get(
+                id=order_id,
+                user=request.user
+            )
         except Order.DoesNotExist:
-            return Response({"error": "Order not found"}, status=404)
+            return Response(
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         settings_obj = SiteSettings.objects.first()
+
         if not settings_obj or not settings_obj.allow_order_cancel:
             return Response(
                 {"error": "Order cancellation is disabled"},
@@ -144,13 +173,13 @@ class CancelOrderAPIView(APIView):
             )
 
         order.status = "CANCELLED"
-        order.save()
+        order.save(update_fields=["status"])
 
-        # ---------- RESTORE VARIANT STOCK ----------
+        # ---------- RESTORE STOCK ----------
         for item in order.items.all():
             if item.variant:
                 item.variant.stock += item.quantity
-                item.variant.save()
+                item.variant.save(update_fields=["stock"])
 
         return Response(
             {"message": "Order cancelled successfully"},
@@ -158,16 +187,26 @@ class CancelOrderAPIView(APIView):
         )
 
 
+# =====================================================
+# REQUEST RETURN
+# =====================================================
 class RequestReturnAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, order_id):
         try:
-            order = Order.objects.get(id=order_id, user=request.user)
+            order = Order.objects.get(
+                id=order_id,
+                user=request.user
+            )
         except Order.DoesNotExist:
-            return Response({"error": "Order not found"}, status=404)
+            return Response(
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         settings_obj = SiteSettings.objects.first()
+
         if not settings_obj or not settings_obj.allow_order_return:
             return Response(
                 {"error": "Returns are disabled"},
@@ -181,14 +220,15 @@ class RequestReturnAPIView(APIView):
             )
 
         if ReturnRequest.objects.filter(
-            order=order, user=request.user
+            order=order,
+            user=request.user
         ).exists():
             return Response(
                 {"error": "Return already requested"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        reason = request.data.get("reason", "")
+        reason = request.data.get("reason")
         if not reason:
             return Response(
                 {"error": "Reason is required"},
@@ -196,7 +236,9 @@ class RequestReturnAPIView(APIView):
             )
 
         ReturnRequest.objects.create(
-            order=order, user=request.user, reason=reason
+            order=order,
+            user=request.user,
+            reason=reason
         )
 
         return Response(
@@ -205,14 +247,23 @@ class RequestReturnAPIView(APIView):
         )
 
 
+# =====================================================
+# DOWNLOAD INVOICE
+# =====================================================
 class OrderInvoiceAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, order_id):
         try:
-            order = Order.objects.get(id=order_id, user=request.user)
+            order = Order.objects.get(
+                id=order_id,
+                user=request.user
+            )
         except Order.DoesNotExist:
-            return Response({"error": "Order not found"}, status=404)
+            return Response(
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         file_path = generate_invoice_pdf(order)
 
@@ -220,3 +271,4 @@ class OrderInvoiceAPIView(APIView):
             open(file_path, "rb"),
             content_type="application/pdf",
         )
+
