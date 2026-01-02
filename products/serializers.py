@@ -3,6 +3,8 @@ from .models import Product, ProductImage, ProductVariant
 from product_collections.models import Collection
 from offers.models import Offer
 from django.utils import timezone
+from decimal import Decimal
+
 
 
 # --------------------------------------------------
@@ -124,29 +126,37 @@ class ProductSerializer(serializers.ModelSerializer):
     # -----------------------------
     # EFFECTIVE PRICE (OFFER > SALE > PRICE)
     # -----------------------------
-    def get_effective_price(self, obj):   #  obj MUST BE HERE
+    def get_effective_price(self, obj):
         now = timezone.now()
 
-        #  OFFER PRICE
+    # OFFER PRICE
         if (
-            obj.offer
-            and obj.offer.is_active
-            and obj.offer.start_date <= now
-            and obj.offer.end_date >= now
+           obj.offer
+           and obj.offer.is_active
+           and obj.offer.start_date <= now
+           and obj.offer.end_date >= now
         ):
-            if obj.offer.discount_type == "PERCENT":
-                discount = (obj.offer.discount_value / 100) * obj.price
-                return round(obj.price - discount)
+           if obj.offer.discount_type == "PERCENT":
+              discount = (
+                  Decimal(obj.offer.discount_value) / Decimal("100")
+              ) * obj.price
+              return (obj.price - discount).quantize(Decimal("0.01"))
 
-            if obj.offer.discount_type == "FLAT":
-                return max(obj.price - obj.offer.discount_value, 0)
+           if obj.offer.discount_type == "FLAT":
+              return max(
+                (obj.price - Decimal(obj.offer.discount_value))
+                .quantize(Decimal("0.01")),
+                Decimal("0.00")
+            )
 
-        #  SALE PRICE
+    # SALE PRICE
         if obj.sale_price:
-            return obj.sale_price
+          return obj.sale_price.quantize(Decimal("0.01"))
 
-        #  NORMAL PRICE
-        return obj.price
+    # NORMAL PRICE
+        return obj.price.quantize(Decimal("0.01"))
+
+  
 
 
 

@@ -3,6 +3,7 @@ from categories.models import Category
 from product_collections.models import Collection  
 from offers.models import Offer
 from django.utils import timezone
+from decimal import Decimal
 
 class Product(models.Model):
     category = models.ForeignKey(
@@ -42,41 +43,34 @@ class Product(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def get_effective_price(self):
-        """
-        Final price priority:
-        1. Active Offer (with deadline)
-        2. Manual sale_price
-        3. Normal price
-        """
-        now = timezone.now()
 
-        # Priority 1: Offer price
-        if (
-            self.offer
-            and self.offer.is_active
-            and self.offer.start_date <= now
-            and self.offer.end_date >= now
-        ):
-            if self.offer.discount_type == "PERCENT":
-                discount = (self.offer.discount_value / 100) * self.price
-                return round(self.price - discount, 2)
+def get_effective_price(self):
+    now = timezone.now()
 
-            if self.offer.discount_type == "FLAT":
-                return max(self.price - self.offer.discount_value, 0)
+    # Priority 1: Offer price
+    if (
+        self.offer
+        and self.offer.is_active
+        and self.offer.start_date <= now
+        and self.offer.end_date >= now
+    ):
+        if self.offer.discount_type == "PERCENT":
+            discount = (Decimal(self.offer.discount_value) / Decimal("100")) * self.price
+            return (self.price - discount).quantize(Decimal("0.01"))
 
-        # Priority 2: Manual sale price
-        if self.sale_price:
-            return self.sale_price
+        if self.offer.discount_type == "FLAT":
+            return max(
+                (self.price - Decimal(self.offer.discount_value)).quantize(Decimal("0.01")),
+                Decimal("0.00")
+            )
 
-        # Priority 3: Normal price
-        return self.price
+    # Priority 2: Manual sale price
+    if self.sale_price:
+        return self.sale_price.quantize(Decimal("0.01"))
 
-    def __str__(self):
-        return f"{self.name} ({self.sku})"
+    # Priority 3: Normal price
+    return self.price.quantize(Decimal("0.01"))
 
-    def __str__(self):
-        return f"{self.name} ({self.sku})"
 
 
 class ProductVariant(models.Model):

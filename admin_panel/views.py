@@ -975,20 +975,20 @@ class AdminOfferDetailAPIView(APIView):
 
     
     # DELETE OFFER
-def delete(self, request, pk):
-    offer = self.get_object(pk)
-    if not offer:
-        return Response(
+    def delete(self, request, pk):
+       offer = self.get_object(pk)
+       if not offer:
+          return Response(
             {"error": "Offer not found"},
             status=404
         )
 
     #  Clear offer from products (safe)
-    offer.products.update(offer=None)
+       offer.products.update(offer=None)
 
-    offer.delete()
-    return Response(
-        {"message": "Offer deleted successfully"},
-        status=200
-    )
+       offer.delete()
+       return Response(
+             {"message": "Offer deleted successfully"},
+           status=200
+           )
 
