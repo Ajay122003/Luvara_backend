@@ -153,8 +153,16 @@ class AdminOrderListSerializer(serializers.ModelSerializer):
 
 class AdminOrderDetailSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source="user.email", read_only=True)
+
     items = serializers.SerializerMethodField()
     address_details = serializers.SerializerMethodField()
+
+    # 🔥 PRICE FIELDS – force number (NOT Decimal / string)
+    subtotal_amount = serializers.SerializerMethodField()
+    discount_amount = serializers.SerializerMethodField()
+    shipping_amount = serializers.SerializerMethodField()
+    gst_amount = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -179,25 +187,40 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             "items",
         ]
 
+    # ================= ITEMS =================
     def get_items(self, obj):
         items = []
+
         for item in obj.items.all():
+            # unit price snapshot
+            unit_price = (
+                getattr(item, "unit_price", None)
+                or getattr(item, "original_price", None)
+                or 0
+            )
+
+            unit_price = float(unit_price)
+            total_price = unit_price * item.quantity
+
             items.append({
                 "id": item.id,
                 "quantity": item.quantity,
-                "price": item.price,
-                "color": item.color,
 
+                "unit_price": unit_price,
+                "total_price": total_price,
+
+                "color": item.color,
                 "size": item.variant.size if item.variant else None,
 
                 "product": ProductSerializer(
-    item.variant.product,
-    context=self.context   # ⭐ THIS IS THE FIX
-).data if item.variant else None,
-
+                    item.variant.product,
+                    context=self.context
+                ).data if item.variant else None,
             })
+
         return items
 
+    # ================= ADDRESS =================
     def get_address_details(self, obj):
         address = obj.address
         if not address:
@@ -211,6 +234,22 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             "state": address.state,
             "full_address": address.full_address,
         }
+
+    # ================= PRICE FIX (🔥 IMPORTANT) =================
+    def get_subtotal_amount(self, obj):
+        return float(obj.subtotal_amount or 0)
+
+    def get_discount_amount(self, obj):
+        return float(obj.discount_amount or 0)
+
+    def get_shipping_amount(self, obj):
+        return float(obj.shipping_amount or 0)
+
+    def get_gst_amount(self, obj):
+        return float(obj.gst_amount or 0)
+
+    def get_total_amount(self, obj):
+        return float(obj.total_amount or 0)
 
 
 class AdminOrderShippingSerializer(serializers.ModelSerializer):

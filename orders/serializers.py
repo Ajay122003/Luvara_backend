@@ -1,42 +1,37 @@
 from rest_framework import serializers
 from decimal import Decimal
-from django.utils.timezone import now
-from admin_panel.models import SiteSettings
 from django.db import transaction
+from django.utils import timezone
+
 from .models import Order, OrderItem, ReturnRequest
-from products.models import Product ,ProductVariant
+from products.models import ProductVariant
 from addresses.models import Address
 from products.serializers import ProductSerializer
-from .utils import generate_order_number ,send_admin_new_order_alert
+from .utils import generate_order_number, send_admin_new_order_alert
 from coupons.models import Coupon
-from django.utils import timezone
 from cart.models import CartItem
+from admin_panel.models import SiteSettings
 
 GST_PERCENTAGE = Decimal("3.00")
 
 
+# ======================================================
+# ORDER CREATE
+# ======================================================
 class OrderCreateSerializer(serializers.Serializer):
-    address_id = serializers.IntegerField(
-        required=False, allow_null=True
-    )
-    delivery_address = serializers.DictField(
-        required=False
-    )
-    billing_address = serializers.DictField(
-        required=False, allow_null=True
-    )
-    coupon_code = serializers.CharField(
-        required=False, allow_blank=True, allow_null=True
-    )
-    payment_method = serializers.ChoiceField(
-        choices=["COD", "ONLINE"]
-    )
+    address_id = serializers.IntegerField(required=False, allow_null=True)
+    delivery_address = serializers.DictField(required=False)
+    coupon_code = serializers.CharField(required=False, allow_blank=True)
+    payment_method = serializers.ChoiceField(choices=["COD", "ONLINE"])
 
+    # --------------------------------------------------
+    # VALIDATE
+    # --------------------------------------------------
     def validate(self, data):
         request = self.context["request"]
         user = request.user
 
-        # ---------- ADDRESS ----------
+        # ---------------- ADDRESS ----------------
         address = None
 
         if data.get("address_id"):
@@ -54,10 +49,11 @@ class OrderCreateSerializer(serializers.Serializer):
         elif data.get("delivery_address"):
             addr = data["delivery_address"]
             required = ["name", "phone", "pincode", "city", "full_address"]
-            for f in required:
-                if not addr.get(f):
+
+            for field in required:
+                if not addr.get(field):
                     raise serializers.ValidationError(
-                        {f: "This field is required"}
+                        {field: "This field is required"}
                     )
 
             address = Address.objects.create(
@@ -75,30 +71,34 @@ class OrderCreateSerializer(serializers.Serializer):
                 "Delivery address required"
             )
 
-        # ---------- CART ----------
-        cart_items = CartItem.objects.select_for_update().filter(user=user)
+        # ---------------- CART ----------------
+        cart_items = (
+            CartItem.objects
+            .select_for_update()
+            .select_related("variant", "variant__product", "variant__product__offer")
+            .filter(user=user)
+        )
+
         if not cart_items.exists():
             raise serializers.ValidationError(
-                {"items": "Cart is empty"}
+                {"cart": "Cart is empty"}
             )
 
         subtotal = Decimal("0.00")
+
         for item in cart_items:
             if item.variant.stock < item.quantity:
                 raise serializers.ValidationError(
                     f"Not enough stock for {item.variant.product.name}"
                 )
 
-            price = (
-                item.variant.product.sale_price
-                or item.variant.product.price
-            )
-            subtotal += Decimal(price) * item.quantity
+            unit_price = item.variant.product.get_effective_price()
+            subtotal += unit_price * item.quantity
 
-        # ---------- COUPON ----------
+        # ---------------- COUPON ----------------
         coupon_obj = None
         discount = Decimal("0.00")
-        coupon_code = (data.get("coupon_code") or "").strip()
+        coupon_code = data.get("coupon_code", "").strip()
 
         if coupon_code:
             try:
@@ -111,14 +111,14 @@ class OrderCreateSerializer(serializers.Serializer):
                     {"coupon_code": "Invalid coupon"}
                 )
 
-            if timezone.now() > coupon_obj.expiry_date:
+            if coupon_obj.expiry_date < timezone.now():
                 raise serializers.ValidationError(
                     {"coupon_code": "Coupon expired"}
                 )
 
             if coupon_obj.used_count >= coupon_obj.usage_limit:
                 raise serializers.ValidationError(
-                    {"coupon_code": "Usage limit exceeded"}
+                    {"coupon_code": "Coupon usage limit exceeded"}
                 )
 
             if subtotal < coupon_obj.min_purchase:
@@ -127,26 +127,30 @@ class OrderCreateSerializer(serializers.Serializer):
                 )
 
             if coupon_obj.discount_type == "PERCENT":
-                discount = (
-                    Decimal(coupon_obj.discount_value) / 100
-                ) * subtotal
+                discount = (Decimal(coupon_obj.discount_value) / 100) * subtotal
             else:
                 discount = Decimal(coupon_obj.discount_value)
 
             discount = min(discount, subtotal)
 
-        # ---------- SHIPPING ----------
+        # ---------------- SHIPPING ----------------
         settings = SiteSettings.objects.first()
-        shipping_amount = (
-            settings.shipping_charge
-            if subtotal - discount < settings.free_shipping_min_amount
-            else Decimal("0.00")
-        )
+        shipping_amount = Decimal("0.00")
 
-        # ---------- GST ----------
-        taxable = subtotal - discount + shipping_amount
-        gst_amount = (taxable * GST_PERCENTAGE) / 100
-        total = taxable + gst_amount
+        if settings and settings.shipping_charge > 0:
+    # Case 1: free_shipping_min_amount = 0 → always charge shipping
+           if settings.free_shipping_min_amount == 0:
+              shipping_amount = settings.shipping_charge
+
+    # Case 2: subtotal < free shipping limit → charge shipping
+           elif subtotal - discount < settings.free_shipping_min_amount:
+               shipping_amount = settings.shipping_charge
+
+
+        # ---------------- GST ----------------
+        taxable_amount = subtotal - discount + shipping_amount
+        gst_amount = (taxable_amount * GST_PERCENTAGE) / 100
+        total_amount = taxable_amount + gst_amount
 
         data.update({
             "address_obj": address,
@@ -155,12 +159,15 @@ class OrderCreateSerializer(serializers.Serializer):
             "discount": discount,
             "shipping_amount": shipping_amount,
             "gst_amount": gst_amount,
-            "total": total,
+            "total": total_amount,
             "coupon_obj": coupon_obj,
         })
 
         return data
 
+    # --------------------------------------------------
+    # CREATE ORDER
+    # --------------------------------------------------
     @transaction.atomic
     def create(self, validated_data):
         user = self.context["request"].user
@@ -179,35 +186,44 @@ class OrderCreateSerializer(serializers.Serializer):
             payment_status="PENDING",
         )
 
+        # ---------------- ORDER ITEMS ----------------
         for item in validated_data["cart_items"]:
-            price = (
-                item.variant.product.sale_price
-                or item.variant.product.price
-            )
+            product = item.variant.product
+
+            original_price = product.price
+            unit_price = product.get_effective_price()
+            total_price = unit_price * item.quantity
 
             OrderItem.objects.create(
                 order=order,
                 variant=item.variant,
                 quantity=item.quantity,
-                price=price,
-                color=item.variant.color, 
+                original_price=original_price,
+                unit_price=unit_price,
+                total_price=total_price,
+                color=item.variant.color or "",
             )
 
+            # Reduce stock
             item.variant.stock -= item.quantity
-            item.variant.save()
+            item.variant.save(update_fields=["stock"])
 
+        # Clear cart
         validated_data["cart_items"].delete()
 
+        # Coupon usage update
         if validated_data["coupon_obj"]:
             coupon = validated_data["coupon_obj"]
             coupon.used_count += 1
             coupon.save(update_fields=["used_count"])
+
         send_admin_new_order_alert(order)
         return order
 
 
-# ================= READ SERIALIZERS =================
-
+# ======================================================
+# ORDER READ
+# ======================================================
 class OrderItemDetailSerializer(serializers.ModelSerializer):
     product = serializers.SerializerMethodField()
     size = serializers.SerializerMethodField()
@@ -219,23 +235,23 @@ class OrderItemDetailSerializer(serializers.ModelSerializer):
             "product",
             "size",
             "quantity",
-            "price",
+            "original_price",
+            "unit_price",
+            "total_price",
             "color",
         ]
 
     def get_product(self, obj):
-        request = self.context.get("request")   # 🔥 IMPORTANT
+        request = self.context.get("request")
         if obj.variant and obj.variant.product:
             return ProductSerializer(
                 obj.variant.product,
-                context={"request": request}    # 🔥 PASS REQUEST
+                context={"request": request}
             ).data
         return None
 
     def get_size(self, obj):
         return obj.variant.size if obj.variant else None
-
-
 
 
 class OrderDetailSerializer(serializers.ModelSerializer):
@@ -263,16 +279,17 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_address(self, obj):
-        if obj.address:
-            return {
-                "name": obj.address.name,
-                "phone": obj.address.phone,
-                "pincode": obj.address.pincode,
-                "city": obj.address.city,
-                "state": obj.address.state,
-                "full_address": obj.address.full_address,
-            }
-        return None
+        if not obj.address:
+            return None
+
+        return {
+            "name": obj.address.name,
+            "phone": obj.address.phone,
+            "pincode": obj.address.pincode,
+            "city": obj.address.city,
+            "state": obj.address.state,
+            "full_address": obj.address.full_address,
+        }
 
 
 class OrderListSerializer(serializers.ModelSerializer):
@@ -291,5 +308,11 @@ class OrderListSerializer(serializers.ModelSerializer):
 class ReturnRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReturnRequest
-        fields = ["id", "order", "reason", "status", "created_at"]
+        fields = [
+            "id",
+            "order",
+            "reason",
+            "status",
+            "created_at",
+        ]
         read_only_fields = ["status", "created_at", "order"]

@@ -18,6 +18,7 @@ ORDER_STATUS = [
 class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders")
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True)
+    total_quantity = models.PositiveIntegerField(default=0)
 
     order_number = models.CharField(max_length=20, unique=True)
 
@@ -65,11 +66,38 @@ class OrderItem(models.Model):
     )
 
     quantity = models.PositiveIntegerField(default=1)
+    
 
-    price = models.DecimalField(
+    original_price = models.DecimalField(
         max_digits=10,
         decimal_places=2
-    )  # price snapshot at purchase
+    )
+
+    unit_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )  # final price after offer/sale
+
+    total_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    # 🔥 DISCOUNT DETAILS
+    discount_percent = models.PositiveIntegerField(default=0)
+    discount_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0
+    )
+
+    offer_title = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True
+    )
+
+    # price snapshot at purchase
 
     color = models.CharField(max_length=20, blank=True)
 
