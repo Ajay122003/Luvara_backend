@@ -3,10 +3,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from rest_framework import status
+from django.db.models import Sum
 
 from .models import CartItem
 from products.models import ProductVariant
 from .serializers import CartItemSerializer
+
+MAX_CART_QTY = 10
 
 
 class AddToCartAPIView(APIView):
@@ -31,15 +34,18 @@ class AddToCartAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if quantity > 10:
+        if quantity > MAX_CART_QTY:
             return Response(
-                {"error": "Maximum 10 items allowed"},
+                {"error": f"Maximum {MAX_CART_QTY} items allowed"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
-            variant = ProductVariant.objects.select_for_update().get(
-                id=variant_id, product__is_active=True
+            variant = (
+                ProductVariant.objects
+                .select_for_update()
+                .select_related("product", "product__offer")
+                .get(id=variant_id, product__is_active=True)
             )
         except ProductVariant.DoesNotExist:
             return Response(
@@ -62,9 +68,9 @@ class AddToCartAPIView(APIView):
         if not created:
             new_qty = cart_item.quantity + quantity
 
-            if new_qty > 10:
+            if new_qty > MAX_CART_QTY:
                 return Response(
-                    {"error": "Max limit exceeded (10)"},
+                    {"error": f"Max limit exceeded ({MAX_CART_QTY})"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -89,14 +95,36 @@ class CartListAPIView(APIView):
     def get(self, request):
         items = (
             CartItem.objects.filter(user=request.user)
-            .select_related("variant", "variant__product")
+            .select_related(
+                "variant",
+                "variant__product",
+                "variant__product__offer",
+            )
             .order_by("-added_at")
         )
 
         serializer = CartItemSerializer(
             items, many=True, context={"request": request}
         )
-        return Response(serializer.data)
+
+        # 🔥 CART SUMMARY
+        subtotal = sum(
+            item.variant.product.get_effective_price() * item.quantity
+            for item in items
+        )
+
+        total_quantity = items.aggregate(
+            total=Sum("quantity")
+        )["total"] or 0
+
+        return Response({
+            "items": serializer.data,
+            "summary": {
+                "subtotal": str(subtotal),   
+                "total_items": items.count(),
+                "total_quantity": total_quantity,
+            }
+        })
 
 
 class UpdateCartItemAPIView(APIView):
@@ -104,8 +132,14 @@ class UpdateCartItemAPIView(APIView):
 
     def put(self, request, item_id):
         try:
-            item = CartItem.objects.select_related("variant").get(
-                id=item_id, user=request.user
+            item = (
+                CartItem.objects
+                .select_related(
+                    "variant",
+                    "variant__product",
+                    "variant__product__offer"
+                )
+                .get(id=item_id, user=request.user)
             )
         except CartItem.DoesNotExist:
             return Response(
@@ -121,9 +155,9 @@ class UpdateCartItemAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if quantity > 10:
+        if quantity > MAX_CART_QTY:
             return Response(
-                {"error": "Max 10 items allowed"},
+                {"error": f"Max {MAX_CART_QTY} items allowed"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -161,7 +195,6 @@ class RemoveCartItemAPIView(APIView):
         )
 
 
-# 🔥 NEW – CLEAR CART (ORDER SUCCESS)
 class ClearCartAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
