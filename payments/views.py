@@ -14,11 +14,9 @@ from orders.models import Order
 
 class CreateRazorpayOrderAPIView(APIView):
     """
-    Step 1: Create Razorpay Order for an existing Order
     POST /api/payments/create/
     Body: { "order_id": 12 }
     """
-
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -33,25 +31,33 @@ class CreateRazorpayOrderAPIView(APIView):
         except Order.DoesNotExist:
             return Response({"error": "Order not found"}, status=404)
 
+        # ❌ Block COD orders
+        if order.payment_method == "COD":
+            return Response(
+                {"error": "COD orders do not require online payment"},
+                status=400
+            )
+
+        # ❌ Already paid
         if order.payment_status == "PAID":
             return Response({"error": "Order already paid"}, status=400)
 
-        # amount in paise
         amount_paise = int(order.total_amount * 100)
 
-        # Create Razorpay order
-        razorpay_order = razorpay_client.order.create(
-            {
+        try:
+            razorpay_order = razorpay_client.order.create({
                 "amount": amount_paise,
                 "currency": "INR",
-                "payment_capture": 1,  # Auto capture
-            }
-        )
+                "payment_capture": 1,
+            })
+        except Exception as e:
+            return Response(
+                {"error": "Razorpay authentication failed"},
+                status=500
+            )
 
-       
-        # We store Razorpay ORDER ID in Order.payment_id field
         order.payment_id = razorpay_order["id"]
-        order.save()
+        order.save(update_fields=["payment_id"])
 
         return Response(
             {
@@ -70,17 +76,8 @@ class CreateRazorpayOrderAPIView(APIView):
 
 class VerifyRazorpayPaymentAPIView(APIView):
     """
-    Step 2: Verify Razorpay payment after success
     POST /api/payments/verify/
-    Body:
-    {
-      "order_id": 12,
-      "razorpay_order_id": "...",
-      "razorpay_payment_id": "...",
-      "razorpay_signature": "..."
-    }
     """
-
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -91,14 +88,24 @@ class VerifyRazorpayPaymentAPIView(APIView):
         data = serializer.validated_data
 
         try:
-            order = Order.objects.get(id=data["order_id"], user=request.user)
+            order = Order.objects.get(
+                id=data["order_id"],
+                user=request.user
+            )
         except Order.DoesNotExist:
             return Response({"error": "Order not found"}, status=404)
 
-        # Check razorpay_order_id matches what we stored
+        # ❌ Block COD
+        if order.payment_method == "COD":
+            return Response(
+                {"error": "COD orders do not require verification"},
+                status=400
+            )
+
         if order.payment_id != data["razorpay_order_id"]:
             return Response(
-                {"error": "Mismatched Razorpay order ID"}, status=400
+                {"error": "Mismatched Razorpay order ID"},
+                status=400
             )
 
         payload = {
@@ -107,22 +114,18 @@ class VerifyRazorpayPaymentAPIView(APIView):
             "razorpay_signature": data["razorpay_signature"],
         }
 
-        # Signature verify
         try:
             razorpay_client.utility.verify_payment_signature(payload)
         except razorpay.errors.SignatureVerificationError:
             order.payment_status = "FAILED"
-            order.save()
+            order.save(update_fields=["payment_status"])
             return Response(
                 {"error": "Payment verification failed"},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=400
             )
 
-        # If success
         order.payment_status = "PAID"
-        # If you want, you can create separate fields for storing payment_id
-        # For now we keep payment_id as the Razorpay order id (already stored)
-        order.save()
+        order.save(update_fields=["payment_status"])
 
         return Response(
             {
@@ -145,10 +148,8 @@ class RazorpayWebhookAPIView(APIView):
             "X-Razorpay-Signature"
         )
 
-        secret = settings.RAZORPAY_WEBHOOK_SECRET
-
         expected_signature = hmac.new(
-            key=bytes(secret, "utf-8"),
+            key=bytes(settings.RAZORPAY_WEBHOOK_SECRET, "utf-8"),
             msg=payload,
             digestmod=hashlib.sha256,
         ).hexdigest()
@@ -159,27 +160,22 @@ class RazorpayWebhookAPIView(APIView):
         data = request.data
         event = data.get("event")
 
-        #  PAYMENT SUCCESS
-        if event == "payment.captured":
+        if event in ["payment.captured", "payment.failed"]:
             payment = data["payload"]["payment"]["entity"]
             razorpay_order_id = payment["order_id"]
 
             try:
                 order = Order.objects.get(payment_id=razorpay_order_id)
-                order.payment_status = "PAID"
-                order.save()
-            except Order.DoesNotExist:
-                pass
 
-        #  PAYMENT FAILED
-        if event == "payment.failed":
-            payment = data["payload"]["payment"]["entity"]
-            razorpay_order_id = payment["order_id"]
+                # ❌ Ignore COD orders
+                if order.payment_method == "COD":
+                    return Response({"status": "ignored"})
 
-            try:
-                order = Order.objects.get(payment_id=razorpay_order_id)
-                order.payment_status = "FAILED"
-                order.save()
+                order.payment_status = (
+                    "PAID" if event == "payment.captured" else "FAILED"
+                )
+                order.save(update_fields=["payment_status"])
+
             except Order.DoesNotExist:
                 pass
 
