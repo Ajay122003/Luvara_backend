@@ -19,6 +19,7 @@ from .utils import send_order_invoice_email,send_admin_new_order_alert
 # =====================================================
 # CREATE ORDER
 # =====================================================
+
 class OrderCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -26,7 +27,7 @@ class OrderCreateAPIView(APIView):
         settings_obj = SiteSettings.objects.first()
         payment_method = request.data.get("payment_method", "ONLINE")
 
-        # ---------- COD CHECK ----------
+        # ---------------- COD ENABLE CHECK ----------------
         if payment_method == "COD":
             if not settings_obj or not settings_obj.enable_cod:
                 return Response(
@@ -34,6 +35,7 @@ class OrderCreateAPIView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
+        # ---------------- SERIALIZER ----------------
         serializer = OrderCreateSerializer(
             data=request.data,
             context={"request": request}
@@ -46,28 +48,36 @@ class OrderCreateAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # ---------------- CREATE ORDER ----------------
         order = serializer.save()
 
-        # ---------- PAYMENT STATUS ----------
+        # 🔥 VERY IMPORTANT
+        order.payment_method = payment_method
+
+        # ---------------- PAYMENT LOGIC ----------------
         if payment_method == "COD":
-            order.payment_status = "COD"
+            # ✅ CORRECT
+            order.payment_status = "COD_PENDING"
+
+            # 🔔 Admin alert allowed
+            send_admin_new_order_alert(order)
+
         else:
-            order.payment_status = "PENDING"  # Razorpay
+            # ONLINE → wait for Razorpay
+            order.payment_status = "PENDING"
 
-        order.save(update_fields=["payment_status"])
-        send_admin_new_order_alert(order)
+        order.save(update_fields=["payment_method", "payment_status"])
 
-        # ---------- INVOICE + EMAIL ----------
-        pdf_path = generate_invoice_pdf(order)
-        send_order_invoice_email(order, pdf_path)
+        # ❗ Invoice + mail ONLY after payment success
+        # (COD → after delivery | ONLINE → after Razorpay verify)
 
+        # ---------------- RESPONSE ----------------
         return Response(
             {
                 "message": "Order created successfully",
                 "order_id": order.id,
                 "order_number": order.order_number,
 
-                # PRICE BREAKUP
                 "subtotal": float(order.subtotal_amount),
                 "discount": float(order.discount_amount),
                 "shipping": float(order.shipping_amount),
@@ -75,12 +85,12 @@ class OrderCreateAPIView(APIView):
                 "gst_amount": float(order.gst_amount),
                 "total_amount": float(order.total_amount),
 
+                "payment_method": payment_method,
                 "payment_status": order.payment_status,
                 "coupon_code": request.data.get("coupon_code") or None,
             },
             status=status.HTTP_201_CREATED,
         )
-
 
 # =====================================================
 # USER ORDER LIST

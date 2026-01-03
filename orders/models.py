@@ -14,6 +14,15 @@ ORDER_STATUS = [
     ("CANCELLED", "Cancelled"),
 ]
 
+# Order model
+
+PAYMENT_STATUS = [
+    ("COD_PENDING", "Cash on Delivery"),
+    ("PENDING", "Payment Pending"),
+    ("PAID", "Paid"),
+    ("FAILED", "Failed"),
+]
+
 
 class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders")
@@ -33,8 +42,19 @@ class Order(models.Model):
 
     coupon = models.ForeignKey(Coupon, null=True, blank=True, on_delete=models.SET_NULL)
 
-    payment_status = models.CharField(max_length=20, default="PENDING")
+    payment_status = models.CharField(
+    max_length=20,
+    choices=PAYMENT_STATUS,   
+    default="PENDING"
+)
+
     payment_id = models.CharField(max_length=100, blank=True, null=True)
+    payment_method = models.CharField(
+    max_length=10,
+    choices=[("COD", "COD"), ("ONLINE", "ONLINE")],
+    default="COD"
+)
+
 
     #  ADD THESE TWO
     courier_name = models.CharField(

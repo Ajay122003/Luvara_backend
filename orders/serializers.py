@@ -95,43 +95,54 @@ class OrderCreateSerializer(serializers.Serializer):
             unit_price = item.variant.product.get_effective_price()
             subtotal += unit_price * item.quantity
 
+        
         # ---------------- COUPON ----------------
         coupon_obj = None
         discount = Decimal("0.00")
-        coupon_code = data.get("coupon_code", "").strip()
 
+        coupon_code = data.get("coupon_code", None)
+
+# ✅ If coupon_code is None or empty → SKIP
         if coupon_code:
-            try:
-                coupon_obj = Coupon.objects.select_for_update().get(
-                    code__iexact=coupon_code,
-                    is_active=True
-                )
-            except Coupon.DoesNotExist:
-                raise serializers.ValidationError(
-                    {"coupon_code": "Invalid coupon"}
-                )
+            coupon_code = coupon_code.strip()
 
-            if coupon_obj.expiry_date < timezone.now():
-                raise serializers.ValidationError(
-                    {"coupon_code": "Coupon expired"}
-                )
+            if coupon_code:  # 🔥 strip pannina apram check
+                try:
+                  coupon_obj = Coupon.objects.select_for_update().get(
+                  code__iexact=coupon_code,
+                  is_active=True
+               )
+                except Coupon.DoesNotExist:
+                   raise serializers.ValidationError({
+                   "coupon_code": "Invalid coupon"
+                })
 
-            if coupon_obj.used_count >= coupon_obj.usage_limit:
-                raise serializers.ValidationError(
-                    {"coupon_code": "Coupon usage limit exceeded"}
-                )
+        # expiry check
+                if coupon_obj.expiry_date < timezone.now():
+                  raise serializers.ValidationError({
+                   "coupon_code": "Coupon expired"
+                })
 
-            if subtotal < coupon_obj.min_purchase:
-                raise serializers.ValidationError(
-                    {"coupon_code": "Minimum purchase not met"}
-                )
+        # usage limit
+                if coupon_obj.used_count >= coupon_obj.usage_limit:
+                  raise serializers.ValidationError({
+                "coupon_code": "Coupon usage limit exceeded"
+                })
 
-            if coupon_obj.discount_type == "PERCENT":
-                discount = (Decimal(coupon_obj.discount_value) / 100) * subtotal
-            else:
-                discount = Decimal(coupon_obj.discount_value)
+        # min purchase
+                if subtotal < coupon_obj.min_purchase:
+                   raise serializers.ValidationError({
+                   "coupon_code": "Minimum purchase not met"
+                 })
 
-            discount = min(discount, subtotal)
+        # discount calculation
+                if coupon_obj.discount_type == "PERCENT":
+                   discount = (Decimal(coupon_obj.discount_value) / 100) * subtotal
+                else:
+                   discount = Decimal(coupon_obj.discount_value)
+
+                discount = min(discount, subtotal)
+
 
         # ---------------- SHIPPING ----------------
         settings = SiteSettings.objects.first()
@@ -172,19 +183,25 @@ class OrderCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         user = self.context["request"].user
 
+        payment_method = validated_data["payment_method"]
+
         order = Order.objects.create(
-            user=user,
-            address=validated_data["address_obj"],
-            order_number=generate_order_number(),
-            subtotal_amount=validated_data["subtotal"],
-            discount_amount=validated_data["discount"],
-            shipping_amount=validated_data["shipping_amount"],
-            gst_percentage=GST_PERCENTAGE,
-            gst_amount=validated_data["gst_amount"],
-            total_amount=validated_data["total"],
-            coupon=validated_data["coupon_obj"],
-            payment_status="PENDING",
-        )
+    user=user,
+    address=validated_data["address_obj"],
+    order_number=generate_order_number(),
+    subtotal_amount=validated_data["subtotal"],
+    discount_amount=validated_data["discount"],
+    shipping_amount=validated_data["shipping_amount"],
+    gst_percentage=GST_PERCENTAGE,
+    gst_amount=validated_data["gst_amount"],
+    total_amount=validated_data["total"],
+    coupon=validated_data["coupon_obj"],
+    payment_method=payment_method,
+
+    # 🔥 KEY PART
+    payment_status="PENDING" if payment_method == "ONLINE" else "PAID",
+)
+
 
         # ---------------- ORDER ITEMS ----------------
         for item in validated_data["cart_items"]:
@@ -217,7 +234,7 @@ class OrderCreateSerializer(serializers.Serializer):
             coupon.used_count += 1
             coupon.save(update_fields=["used_count"])
 
-        send_admin_new_order_alert(order)
+        
         return order
 
 
