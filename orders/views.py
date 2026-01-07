@@ -58,8 +58,10 @@ class OrderCreateAPIView(APIView):
         if payment_method == "COD":
             # ✅ CORRECT
             order.payment_status = "COD_PENDING"
-
+            pdf_path = generate_invoice_pdf(order)
             # 🔔 Admin alert allowed
+            send_order_invoice_email(order, pdf_path)
+
             send_admin_new_order_alert(order)
 
         else:
