@@ -393,15 +393,26 @@ class AdminProductListCreateAPIView(APIView):
         product = serializer.save()
 
         # CREATE VARIANTS
-        i = 0
-        while f"variants[{i}][size]" in request.data:
-            ProductVariant.objects.create(
-                product=product,
-                size=request.data.get(f"variants[{i}][size]"),
-                color=request.data.get(f"variants[{i}][color]"),
-                stock=int(request.data.get(f"variants[{i}][stock]", 0)),
+       
+
+# CREATE VARIANTS (JSON BASED)
+        if "variants" in request.data:
+          try:
+            variants = json.loads(request.data.get("variants"))
+          except Exception:
+           return Response(
+            {"variants": ["Invalid format"]},
+            status=400
             )
-            i += 1
+
+        for v in variants:
+           ProductVariant.objects.create(
+            product=product,
+            size=v.get("size"),
+            color=v.get("color"),
+            stock=v.get("stock", 0),
+        )
+
 
         return Response(
             ProductSerializer(product, context={"request": request}).data,
