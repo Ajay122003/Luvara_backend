@@ -34,6 +34,7 @@ urlpatterns = [
 
     # Orders
     path("orders/", AdminOrderListAPIView.as_view()),
+    path("orders/<int:pk>/delete/", AdminOrderDeleteAPIView.as_view(),),
     path("orders/<int:pk>/", AdminOrderDetailAPIView.as_view()),
 
     # Settings
