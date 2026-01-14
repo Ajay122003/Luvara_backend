@@ -541,6 +541,34 @@ class AdminOrderListAPIView(APIView):
 
         serializer = AdminOrderListSerializer(orders, many=True)
         return Response(serializer.data)
+    
+
+class AdminOrderDeleteAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def delete(self, request, pk):
+        try:
+            order = Order.objects.get(pk=pk)
+        except Order.DoesNotExist:
+            return Response(
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # safety check
+        if order.status in ["PAID", "SHIPPED", "DELIVERED"]:
+            return Response(
+                {"error": "Cannot delete processed orders"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order.delete()
+        return Response(
+            {"message": "Order deleted successfully"},
+            status=status.HTTP_200_OK
+        )
+
+
 
 
 class AdminOrderDetailAPIView(APIView):

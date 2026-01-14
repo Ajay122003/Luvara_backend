@@ -10,8 +10,8 @@ class SiteSettings(models.Model):
     enable_cod = models.BooleanField(default=True)
 
     #  SHIPPING SETTINGS (NEW)
-    shipping_charge = models.DecimalField( max_digits=10, decimal_places=2, default=0 )
-    free_shipping_min_amount = models.DecimalField( max_digits=10, decimal_places=2, default=0 )
+    shipping_charge = models.DecimalField( max_digits=10, decimal_places=2 )
+    free_shipping_min_amount = models.DecimalField( max_digits=10, decimal_places=2)
 
     allow_order_cancel = models.BooleanField(default=True)
     allow_order_return = models.BooleanField(default=True)

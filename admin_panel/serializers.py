@@ -138,6 +138,7 @@ class AdminProductCreateSerializer(serializers.ModelSerializer):
 
 class AdminOrderListSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source="user.email", read_only=True)
+    can_delete = serializers.SerializerMethodField()  # 🔥 ADD
 
     class Meta:
         model = Order
@@ -149,7 +150,14 @@ class AdminOrderListSerializer(serializers.ModelSerializer):
             "payment_status",
             "status",
             "created_at",
+            "can_delete",  # 🔥 ADD
         ]
+
+    def get_can_delete(self, obj):
+        # processed orders delete panna koodathu
+        if obj.status in ["PAID", "SHIPPED", "DELIVERED"]:
+            return False
+        return True
 
 class AdminOrderDetailSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source="user.email", read_only=True)
