@@ -32,14 +32,28 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-p7yjse$hi8n!)=zz(o+-vz4uj1cgp9$0)1f6_139er4!f7m)n#'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     ".onrender.com",
+    "luvarastore.com",
+    "www.luvarastore.com",
 ]
 
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+SECURE_HSTS_SECONDS = 3600
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
+X_FRAME_OPTIONS = "DENY"
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
 
 
 
@@ -257,10 +271,26 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.luvarastore.com",
 ]
 
+CORS_ALLOW_CREDENTIALS = False 
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://localhost:5173",
+    "https://luvarastore.com",
+    "https://www.luvarastore.com",
+    "https://luvara-backend.onrender.com",
+]
+
+CORS_ALLOW_HEADERS = [
+    "authorization",
+    "content-type",
+    "x-csrftoken",
+]
 
 
 
-CORS_ALLOW_ALL_ORIGINS = True  # (dev ku ok, production la strict aakalam)
+
 
 
 import os
@@ -283,8 +313,11 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-EMAIL_HOST_USER = "ajayelango54@gmail.com"
-EMAIL_HOST_PASSWORD = "errs tdlx lvms eijo"   # App Password
+# EMAIL_HOST_USER = "ajayelango54@gmail.com"
+# EMAIL_HOST_PASSWORD = "errs tdlx lvms eijo"   # App Password
+
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 
 DEFAULT_FROM_EMAIL = f"Luvara Store <{EMAIL_HOST_USER}>"
 
