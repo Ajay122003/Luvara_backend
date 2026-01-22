@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import User, EmailOTP
-from utils.email_sender import generate_otp, send_otp_email
+from utils.email_sender import generate_otp, send_otp_email ,send_otp_email_async
 from .otp_utils import check_otp_rate_limit
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -29,26 +29,33 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField()
 
     def validate(self, data):
-        email = data["email"]
-        password = data["password"]
-
-        # Authenticate
-        user = authenticate(email=email, password=password)
+        user = authenticate(
+            email=data["email"],
+            password=data["password"]
+        )
 
         if not user:
             raise serializers.ValidationError("Invalid credentials")
 
-        # If email not verified → send OTP now
         if not user.is_email_verified:
             otp = generate_otp()
             EmailOTP.objects.create(user=user, otp=otp)
-            send_otp_email(email, otp)
 
-            raise serializers.ValidationError(
-                "Email not verified. OTP has been sent. Please verify to continue."
-            )
+            try:
+                send_otp_email_async(user.email, otp)
+            except Exception as e:
+                print("EMAIL ERROR:", e)
 
-        return user
+            return {
+                "otp_required": True,
+                "email": user.email
+            }
+
+        return {
+            "otp_required": False,
+            "user": user
+        }
+
 
 
 class LoginOTPRequestSerializer(serializers.Serializer):
@@ -56,24 +63,27 @@ class LoginOTPRequestSerializer(serializers.Serializer):
 
     def validate(self, data):
         email = data["email"]
+
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
             raise serializers.ValidationError("User not found")
 
-        # Rate limit
         check_otp_rate_limit(user)
 
-        # Generate & store OTP
         otp = generate_otp()
         EmailOTP.objects.create(user=user, otp=otp)
 
-        # Send email
-        send_otp_email(email, otp)
+        try:
+            send_otp_email_async(email, otp) 
+        except Exception as e:
+            print("EMAIL ERROR:", e)
 
-        data["user"] = user
-        return data
-
+        #  IMPORTANT
+        return {
+            "success": True,
+            "email": email
+        }
 
 class LoginOTPVerifySerializer(serializers.Serializer):
     email = serializers.EmailField()

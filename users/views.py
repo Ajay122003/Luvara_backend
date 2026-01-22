@@ -37,15 +37,14 @@ logger = logging.getLogger(__name__)
 
 
 class LoginSendOTPView(APIView):
-    throttle_scope = "otp"  # for DRF throttling later
-
     def post(self, request):
         serializer = LoginOTPRequestSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.validated_data["user"]
-            logger.info(f"OTP sent to {user.email}")  # simple logging
             return Response(
-                {"message": "OTP sent to your email."},
+                {
+                    "message": "OTP sent successfully",
+                    "email": serializer.validated_data["email"]
+                },
                 status=status.HTTP_200_OK,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -72,13 +71,25 @@ class LoginView(APIView):
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.validated_data
-            tokens = get_tokens(user)
+            data = serializer.validated_data
+
+            if data.get("otp_required"):
+                return Response(
+                    {
+                        "otp_required": True,
+                        "email": data["email"]
+                    },
+                    status=200
+                )
+
+            tokens = get_tokens(data["user"])
             return Response(
                 {"message": "Login successful", "tokens": tokens},
-                status=status.HTTP_200_OK,
+                status=200
             )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(serializer.errors, status=400)
+
 
 
 class MeView(APIView):
