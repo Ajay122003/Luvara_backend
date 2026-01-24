@@ -32,7 +32,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-p7yjse$hi8n!)=zz(o+-vz4uj1cgp9$0)1f6_139er4!f7m)n#'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = [
     "localhost",
@@ -311,17 +311,17 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = "smtp.gmail.com"
+EMAIL_HOST = "smtp-relay.brevo.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-# EMAIL_HOST_USER = "ajayelango54@gmail.com"
+EMAIL_HOST_USER = "apikey"
 # EMAIL_HOST_PASSWORD = "errs tdlx lvms eijo"   # App Password
 
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+# EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 
-DEFAULT_FROM_EMAIL = f"Luvara Store <{EMAIL_HOST_USER}>"
+DEFAULT_FROM_EMAIL = f"Luvara Store <ajayelango54@gmail.com>"
 
 
 

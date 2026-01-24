@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import User, EmailOTP
-from utils.email_sender import generate_otp, send_otp_email ,send_otp_email_async
+from utils.email_sender import generate_otp, send_otp_email 
 from .otp_utils import check_otp_rate_limit
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -41,10 +41,7 @@ class LoginSerializer(serializers.Serializer):
             otp = generate_otp()
             EmailOTP.objects.create(user=user, otp=otp)
 
-            try:
-                send_otp_email_async(user.email, otp)
-            except Exception as e:
-                print("EMAIL ERROR:", e)
+            send_otp_email(user.email, otp)  # ✅ FIXED
 
             return {
                 "otp_required": True,
@@ -74,16 +71,12 @@ class LoginOTPRequestSerializer(serializers.Serializer):
         otp = generate_otp()
         EmailOTP.objects.create(user=user, otp=otp)
 
-        try:
-            send_otp_email_async(email, otp) 
-        except Exception as e:
-            print("EMAIL ERROR:", e)
+        send_otp_email(email, otp)  # ✅ FIXED
 
-        #  IMPORTANT
         return {
-            "success": True,
             "email": email
         }
+
 
 class LoginOTPVerifySerializer(serializers.Serializer):
     email = serializers.EmailField()

@@ -1,7 +1,9 @@
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 import random
-import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 def generate_otp():
     return str(random.randint(100000, 999999))
@@ -20,19 +22,16 @@ def send_otp_email(email, otp):
     </html>
     """
 
-    email_message = EmailMultiAlternatives(
-        subject,
-        text_message,
-        settings.DEFAULT_FROM_EMAIL,
-        [email]
-    )
-    email_message.attach_alternative(html_message, "text/html")
-    email_message.send(fail_silently=True)
-
-
-def send_otp_email_async(email, otp):
-    threading.Thread(
-        target=send_otp_email,
-        args=(email, otp),
-        daemon=True
-    ).start()
+    try:
+        email_message = EmailMultiAlternatives(
+            subject,
+            text_message,
+            settings.DEFAULT_FROM_EMAIL,
+            [email]
+        )
+        email_message.attach_alternative(html_message, "text/html")
+        email_message.send(fail_silently=False)  # 👈 IMPORTANT
+        print("✅ OTP MAIL SENT")
+    except Exception as e:
+        print("❌ OTP MAIL ERROR:", e)
+        logger.error(f"OTP mail error: {e}")

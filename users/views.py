@@ -39,14 +39,21 @@ logger = logging.getLogger(__name__)
 class LoginSendOTPView(APIView):
     def post(self, request):
         serializer = LoginOTPRequestSerializer(data=request.data)
+
         if serializer.is_valid():
+            email = serializer.validated_data["email"]
+            otp = serializer.validated_data["otp"]  # or however you store it
+
+            send_otp_email(email, otp)  # ✅ THIS WAS MISSING
+
             return Response(
                 {
                     "message": "OTP sent successfully",
-                    "email": serializer.validated_data["email"]
+                    "email": email
                 },
                 status=status.HTTP_200_OK,
             )
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
