@@ -32,7 +32,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-p7yjse$hi8n!)=zz(o+-vz4uj1cgp9$0)1f6_139er4!f7m)n#'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = [
     "localhost",
@@ -123,6 +123,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
@@ -265,8 +266,8 @@ LOGGING = {
 
 
 CORS_ALLOWED_ORIGINS = [
-    # "http://localhost:3000",
-    # "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:5173",
     "https://luvarastore.com",
     "https://www.luvarastore.com",
 ]
@@ -274,8 +275,8 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = False 
 
 CSRF_TRUSTED_ORIGINS = [
-    # "http://localhost:3000",
-    # "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:5173",
     # "https://localhost:5173",
     "https://luvarastore.com",
     "https://www.luvarastore.com",
@@ -289,6 +290,7 @@ CORS_ALLOW_HEADERS = [
 ]
 
 
+CORS_ALLOW_ALL_ORIGINS = True
 
 
 
@@ -313,11 +315,11 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-EMAIL_HOST_USER = "ajayelango54@gmail.com"
-EMAIL_HOST_PASSWORD = "errs tdlx lvms eijo"   # App Password
+# EMAIL_HOST_USER = "ajayelango54@gmail.com"
+# EMAIL_HOST_PASSWORD = "errs tdlx lvms eijo"   # App Password
 
-# EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
-# EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 
 DEFAULT_FROM_EMAIL = f"Luvara Store <{EMAIL_HOST_USER}>"
 
