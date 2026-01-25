@@ -42,9 +42,8 @@ class LoginSendOTPView(APIView):
 
         if serializer.is_valid():
             email = serializer.validated_data["email"]
-            otp = serializer.validated_data["otp"]  # or however you store it
 
-            send_otp_email(email, otp)  # ✅ THIS WAS MISSING
+            
 
             return Response(
                 {

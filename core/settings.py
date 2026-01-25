@@ -315,10 +315,11 @@ EMAIL_HOST = "smtp-relay.brevo.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-EMAIL_HOST_USER = "apikey"
-# EMAIL_HOST_PASSWORD = "errs tdlx lvms eijo"   # App Password
+# EMAIL_HOST_USER = "apikey"
+# EMAIL_HOST_PASSWORD = "errs tdlx lvms eijo" 
+# EMAIL_HOST_PASSWORD = "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"   # App Password
 
-# EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 
 DEFAULT_FROM_EMAIL = f"Luvara Store <ajayelango54@gmail.com>"

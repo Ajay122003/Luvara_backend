@@ -3,6 +3,7 @@ from django.contrib.auth import authenticate
 from .models import User, EmailOTP
 from utils.email_sender import generate_otp, send_otp_email 
 from .otp_utils import check_otp_rate_limit
+from django.conf import settings
 
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -40,6 +41,7 @@ class LoginSerializer(serializers.Serializer):
         if not user.is_email_verified:
             otp = generate_otp()
             EmailOTP.objects.create(user=user, otp=otp)
+            print("SMTP CONFIG:", settings.EMAIL_HOST, settings.EMAIL_HOST_USER)
 
             send_otp_email(user.email, otp)  # ✅ FIXED
 
