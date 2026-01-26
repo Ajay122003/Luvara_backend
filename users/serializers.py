@@ -43,7 +43,7 @@ class LoginSerializer(serializers.Serializer):
             EmailOTP.objects.create(user=user, otp=otp)
             print("SMTP CONFIG:", settings.EMAIL_HOST, settings.EMAIL_HOST_USER)
 
-            send_otp_email(user.email, otp)  # ✅ FIXED
+            send_otp_email(user.email, otp)  #  FIXED
 
             return {
                 "otp_required": True,

@@ -30,8 +30,8 @@ def send_otp_email(email, otp):
             [email]
         )
         email_message.attach_alternative(html_message, "text/html")
-        email_message.send(fail_silently=False)  # 👈 IMPORTANT
-        print("✅ OTP MAIL SENT")
+        email_message.send(fail_silently=False)  
+        print(" OTP MAIL SENT")
     except Exception as e:
-        print("❌ OTP MAIL ERROR:", e)
+        print(" OTP MAIL ERROR:", e)
         logger.error(f"OTP mail error: {e}")
