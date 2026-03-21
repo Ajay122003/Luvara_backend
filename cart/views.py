@@ -1,0 +1,219 @@
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
+from rest_framework import status
+from django.db.models import Sum
+
+from .models import CartItem
+from products.models import ProductVariant
+from .serializers import CartItemSerializer
+
+MAX_CART_QTY = 10
+
+
+class AddToCartAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        user = request.user
+
+        variant_id = request.data.get("variant_id")
+        quantity = int(request.data.get("quantity", 1))
+
+        #  Validation
+        if not variant_id:
+            return Response(
+                {"error": "variant_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if quantity < 1:
+            return Response(
+                {"error": "Minimum quantity is 1"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if quantity > MAX_CART_QTY:
+            return Response(
+                {"error": f"Maximum {MAX_CART_QTY} items allowed"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        #  Fetch variant safely (NO select_related here)
+        try:
+            variant = (
+                ProductVariant.objects
+                .select_for_update()
+                .get(id=variant_id)
+            )
+
+            # Check product active separately
+            if not variant.product.is_active:
+                return Response(
+                    {"error": "Product inactive"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        except ProductVariant.DoesNotExist:
+            return Response(
+                {"error": "Product variant not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        #  Stock check
+        if quantity > variant.stock:
+            return Response(
+                {"error": "Not enough stock"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Add / update cart
+        cart_item, created = CartItem.objects.get_or_create(
+            user=user,
+            variant=variant,
+            defaults={"quantity": quantity},
+        )
+
+        if not created:
+            new_qty = cart_item.quantity + quantity
+
+            if new_qty > MAX_CART_QTY:
+                return Response(
+                    {"error": f"Max limit exceeded ({MAX_CART_QTY})"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if new_qty > variant.stock:
+                return Response(
+                    {"error": "Stock limit reached"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            cart_item.quantity = new_qty
+            cart_item.save()
+
+        serializer = CartItemSerializer(
+            cart_item,
+            context={"request": request}
+        )
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class CartListAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        items = (
+            CartItem.objects.filter(user=request.user)
+            .select_related(
+                "variant",
+                "variant__product",
+                "variant__product__offer",
+            )
+            .order_by("-added_at")
+        )
+
+        serializer = CartItemSerializer(
+            items, many=True, context={"request": request}
+        )
+
+        #  CART SUMMARY
+        subtotal = sum(
+            item.variant.product.get_effective_price() * item.quantity
+            for item in items
+        )
+
+        total_quantity = items.aggregate(
+            total=Sum("quantity")
+        )["total"] or 0
+
+        return Response({
+            "items": serializer.data,
+            "summary": {
+                "subtotal": str(subtotal),   
+                "total_items": items.count(),
+                "total_quantity": total_quantity,
+            }
+        })
+
+
+class UpdateCartItemAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, item_id):
+        try:
+            item = (
+                CartItem.objects
+                .select_related(
+                    "variant",
+                    "variant__product",
+                    "variant__product__offer"
+                )
+                .get(id=item_id, user=request.user)
+            )
+        except CartItem.DoesNotExist:
+            return Response(
+                {"error": "Cart item not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        quantity = int(request.data.get("quantity", item.quantity))
+
+        if quantity < 1:
+            return Response(
+                {"error": "Minimum quantity is 1"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if quantity > MAX_CART_QTY:
+            return Response(
+                {"error": f"Max {MAX_CART_QTY} items allowed"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if quantity > item.variant.stock:
+            return Response(
+                {"error": "Stock not enough"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        item.quantity = quantity
+        item.save()
+
+        serializer = CartItemSerializer(
+            item, context={"request": request}
+        )
+        return Response(serializer.data)
+
+
+class RemoveCartItemAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, item_id):
+        try:
+            item = CartItem.objects.get(id=item_id, user=request.user)
+        except CartItem.DoesNotExist:
+            return Response(
+                {"error": "Item not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        item.delete()
+        return Response(
+            {"message": "Item removed successfully"},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ClearCartAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        CartItem.objects.filter(user=request.user).delete()
+        return Response(
+            {"message": "Cart cleared successfully"},
+            status=status.HTTP_200_OK,
+        )

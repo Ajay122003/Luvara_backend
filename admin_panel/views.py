@@ -1,0 +1,1057 @@
+import logging
+from rest_framework.permissions import AllowAny
+from django.db.models import Sum
+from django.core.cache import cache
+from django.utils.timezone import now
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.db.models import Sum, Q
+import json
+from .permissions import IsAdminUserCustom
+from .models import SiteSettings, AdminOTP
+from .serializers import *
+from .utils_email import send_admin_otp_email, generate_otp , send_order_status_update_email
+from subscriptions.models import Subscriber
+from users.models import User
+from categories.models import Category
+from categories.serializers import *
+from product_collections.models import Collection
+from product_collections.serializers import *
+from products.models import Product, ProductImage
+from products.serializers import *
+from orders.models import Order, OrderItem
+from coupons.models import Coupon
+from coupons.serializers import *
+from offers.models import Offer
+from admin_panel.serializers import AdminOfferSerializer
+
+logger = logging.getLogger(__name__)
+
+
+def generate_tokens(user):
+    refresh = RefreshToken.for_user(user)
+    return {
+        "refresh": str(refresh),
+        "access": str(refresh.access_token),
+    }
+
+
+# -----------------------------
+# ADMIN AUTH + PROFILE
+# -----------------------------
+class AdminLoginAPIView(APIView):
+    def post(self, request):
+        serializer = AdminLoginSerializer(data=request.data)
+        if serializer.is_valid():
+            admin = serializer.validated_data
+
+            otp = generate_otp()
+            AdminOTP.objects.create(admin=admin, otp=otp)
+            send_admin_otp_email(admin, otp)
+
+            return Response(
+                {"message": "OTP sent to admin email", "admin_email": admin.email}
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AdminVerifyOTPAPIView(APIView):
+    def post(self, request):
+        serializer = AdminOTPVerifySerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data["email"]
+            otp = serializer.validated_data["otp"]
+
+            try:
+                admin_user = User.objects.get(email=email, is_staff=True)
+            except User.DoesNotExist:
+                return Response({"error": "Admin not found"}, status=404)
+
+            try:
+                latest_otp = AdminOTP.objects.filter(admin=admin_user).latest(
+                    "created_at"
+                )
+            except AdminOTP.DoesNotExist:
+                return Response({"error": "OTP not generated"}, status=400)
+
+            if latest_otp.is_expired():
+                return Response({"error": "OTP expired"}, status=400)
+
+            if latest_otp.otp != otp:
+                return Response({"error": "Invalid OTP"}, status=400)
+
+            tokens = generate_tokens(admin_user)
+
+            return Response(
+                {
+                    "message": "OTP verified successfully",
+                    "tokens": tokens,
+                }
+            )
+
+        return Response(serializer.errors, status=400)
+
+
+class AdminUpdateEmailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def put(self, request):
+        serializer = AdminEmailChangeSerializer(data=request.data)
+        if serializer.is_valid():
+            new_email = serializer.validated_data["new_email"]
+
+            admin = request.user
+            admin.email = new_email
+            admin.username = new_email  # if username = email
+            admin.save()
+
+            return Response(
+                {"message": "Email updated successfully", "new_email": new_email}
+            )
+
+        return Response(serializer.errors, status=400)
+
+
+class AdminChangePasswordAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def put(self, request):
+        serializer = AdminPasswordChangeSerializer(
+            data=request.data, context={"request": request}
+        )
+        if serializer.is_valid():
+            admin = request.user
+            admin.set_password(serializer.validated_data["new_password"])
+            admin.save()
+            return Response({"message": "Password updated successfully"})
+
+        return Response(serializer.errors, status=400)
+    
+
+class AdminForgotPasswordAPIView(APIView):
+    def post(self, request):
+        serializer = AdminForgotPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data["email"]
+            admin = User.objects.get(email=email, is_staff=True)
+
+            otp = generate_otp()
+            AdminOTP.objects.create(admin=admin, otp=otp)
+            send_admin_otp_email(admin, otp)
+
+            return Response({"message": "OTP sent to admin email"})
+
+        return Response(serializer.errors, status=400)
+
+
+
+class AdminResetPasswordAPIView(APIView):
+    print("RESET PASSWORD API HIT")
+    def post(self, request):
+        serializer = AdminResetPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data["email"]
+            otp = serializer.validated_data["otp"]
+            new_password = serializer.validated_data["new_password"]
+
+            try:
+                admin = User.objects.get(email=email, is_staff=True)
+            except User.DoesNotExist:
+                return Response({"error": "Admin not found"}, status=404)
+
+            try:
+                latest_otp = AdminOTP.objects.filter(admin=admin).latest("created_at")
+            except AdminOTP.DoesNotExist:
+                return Response({"error": "OTP not found"}, status=400)
+
+            if latest_otp.is_expired():
+                return Response({"error": "OTP expired"}, status=400)
+
+            if latest_otp.otp != otp:
+                return Response({"error": "Invalid OTP"}, status=400)
+
+            admin.set_password(new_password)
+            admin.save()
+            latest_otp.delete()
+
+            return Response({"message": "Password reset successful"})
+
+        return Response(serializer.errors, status=400)
+
+
+
+
+class AdminUserListView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        users = User.objects.filter(is_staff=False).values("id", "email", "username", "date_joined")
+        return Response(users)
+
+
+class AdminSubscriptionListView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        subs = Subscriber.objects.all().values("id", "email", "created_at")
+        return Response(subs)
+
+
+class AdminTestAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        return Response({"message": "Admin access confirmed!"})
+
+
+# -----------------------------
+# CATEGORY MANAGEMENT
+# -----------------------------
+class AdminCategoryListCreateAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        categories = Category.objects.all().order_by("sort_order", "name")
+        serializer = CategorySerializer(
+            categories, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = CategorySerializer(
+            data=request.data, context={"request": request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AdminCategoryDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_object(self, pk):
+        try:
+            return Category.objects.get(pk=pk)
+        except Category.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        category = self.get_object(pk)
+        if not category:
+            return Response(
+                {"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = CategorySerializer(category, context={"request": request})
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        category = self.get_object(pk)
+        if not category:
+            return Response(
+                {"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = CategorySerializer(
+            category,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        category = self.get_object(pk)
+        if not category:
+            return Response(
+                {"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        category.delete()
+        return Response(
+            {"message": "Category deleted successfully"},
+            status=status.HTTP_200_OK,
+        )
+
+
+# -----------------------------
+# collection MANAGEMENT
+# -----------------------------
+
+class AdminCollectionListCreateAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        collections = Collection.objects.all().order_by("sort_order", "name")
+        serializer = CollectionListSerializer(
+            collections, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = CollectionCreateUpdateSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+        if serializer.is_valid():
+            instance = serializer.save()
+            return Response(
+                CollectionListSerializer(instance, context={"request": request}).data,
+                status=201
+            )
+        return Response(serializer.errors, status=400)
+
+
+class AdminCollectionDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_object(self, pk):
+        try:
+            return Collection.objects.get(pk=pk)
+        except Collection.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        collection = self.get_object(pk)
+        if not collection:
+            return Response({"error": "Collection not found"}, status=404)
+
+        serializer = CollectionListSerializer(collection, context={"request": request})
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        collection = self.get_object(pk)
+        if not collection:
+            return Response({"error": "Collection not found"}, status=404)
+
+        serializer = CollectionCreateUpdateSerializer(
+            collection,
+            data=request.data,
+            partial=True,
+            context={"request": request}
+        )
+        if serializer.is_valid():
+            instance = serializer.save()
+            return Response(
+                CollectionListSerializer(instance, context={"request": request}).data
+            )
+        return Response(serializer.errors, status=400)
+
+    def delete(self, request, pk):
+        collection = self.get_object(pk)
+        if not collection:
+            return Response({"error": "Collection not found"}, status=404)
+
+        collection.delete()
+        return Response({"message": "Collection deleted successfully"}, status=200)
+    
+
+# -----------------------------
+# PRODUCT MANAGEMENT
+# -----------------------------
+class AdminProductListCreateAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        products = (
+            Product.objects
+            .all()
+            .prefetch_related("images", "variants", "collections")
+            .order_by("-id")
+        )
+
+        serializer = ProductSerializer(
+            products, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    def post(self, request):
+        data = request.data
+
+        serializer = AdminProductCreateSerializer(data=data)
+        if not serializer.is_valid():
+            print("PRODUCT CREATE ERRORS:", serializer.errors)
+            return Response(serializer.errors, status=400)
+
+        product = serializer.save()
+
+        # CREATE VARIANTS
+       
+
+# CREATE VARIANTS (JSON BASED)
+        if "variants" in request.data:
+          try:
+            variants = json.loads(request.data.get("variants"))
+          except Exception:
+           return Response(
+            {"variants": ["Invalid format"]},
+            status=400
+            )
+
+        for v in variants:
+           ProductVariant.objects.create(
+            product=product,
+            size=v.get("size"),
+            color=v.get("color"),
+            stock=v.get("stock", 0),
+        )
+
+
+        return Response(
+            ProductSerializer(product, context={"request": request}).data,
+            status=201
+        )
+
+
+# -----------------------------
+# PRODUCT DETAIL / UPDATE / DELETE
+# -----------------------------
+class AdminProductDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_object(self, pk):
+        try:
+            return (
+                Product.objects
+                .prefetch_related("images", "variants", "collections")
+                .get(pk=pk)
+            )
+        except Product.DoesNotExist:
+            return None
+
+    # -------- GET SINGLE PRODUCT --------
+    def get(self, request, pk):
+        product = self.get_object(pk)
+        if not product:
+            return Response({"error": "Product not found"}, status=404)
+
+        return Response(
+            ProductSerializer(product, context={"request": request}).data
+        )
+
+    # -------- UPDATE PRODUCT --------
+    def put(self, request, pk):
+        product = self.get_object(pk)
+        if not product:
+            return Response({"error": "Product not found"}, status=404)
+
+        data = request.data
+
+        serializer = AdminProductCreateSerializer(
+            product, data=data, partial=True
+        )
+
+        if not serializer.is_valid():
+            print("PRODUCT UPDATE ERRORS:", serializer.errors)
+            return Response(serializer.errors, status=400)
+
+        updated_product = serializer.save()
+
+        # REPLACE VARIANTS
+        ProductVariant.objects.filter(product=updated_product).delete()
+
+        if "variants" in request.data:
+            try:
+                variants = json.loads(request.data.get("variants"))
+            except Exception:
+                return Response(
+                    {"variants": ["Invalid format"]},
+                    status=400
+                )
+
+            for v in variants:
+                ProductVariant.objects.create(
+                    product=updated_product,
+                    size=v.get("size"),
+                    color=v.get("color"),
+                    stock=v.get("stock", 0),
+                )
+
+        return Response(
+            ProductSerializer(
+                updated_product, context={"request": request}
+            ).data,
+            status=200
+        )
+
+    # -------- DELETE PRODUCT --------
+    def delete(self, request, pk):
+        product = self.get_object(pk)
+        if not product:
+            return Response({"error": "Product not found"}, status=404)
+
+        product.delete()
+        return Response({"message": "Product deleted"}, status=200)
+
+
+# -----------------------------
+# DELETE SINGLE PRODUCT IMAGE
+# -----------------------------
+class AdminDeleteProductImageAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def delete(self, request, image_id):
+        try:
+            img = ProductImage.objects.get(id=image_id)
+        except ProductImage.DoesNotExist:
+            return Response(
+                {"error": "Image not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        img.delete()
+        return Response(
+            {"message": "Image deleted successfully"},
+            status=status.HTTP_200_OK,
+        )
+
+# -----------------------------
+# ORDER MANAGEMENT
+# -----------------------------
+class AdminOrderListAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        status_filter = request.GET.get("status")
+
+        if status_filter:
+            orders = Order.objects.filter(
+                status=status_filter
+            ).order_by("-created_at")
+        else:
+            orders = Order.objects.all().order_by("-created_at")
+
+        serializer = AdminOrderListSerializer(orders, many=True)
+        return Response(serializer.data)
+    
+
+class AdminOrderDeleteAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def delete(self, request, pk):
+        try:
+            order = Order.objects.get(pk=pk)
+        except Order.DoesNotExist:
+            return Response(
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # safety check
+        if order.status in ["PAID", "SHIPPED", "DELIVERED"]:
+            return Response(
+                {"error": "Cannot delete processed orders"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order.delete()
+        return Response(
+            {"message": "Order deleted successfully"},
+            status=status.HTTP_200_OK
+        )
+
+class AdminUnreadOrderCountAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        count = Order.objects.filter(
+            is_admin_viewed=False
+        ).count()
+
+        return Response({
+            "unread_count": count
+        })
+
+
+class AdminOrderDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request, pk):
+        try:
+            order = Order.objects.get(id=pk)
+        except Order.DoesNotExist:
+            return Response(
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        #  Mark only this order as viewed
+        if not order.is_admin_viewed:
+            order.is_admin_viewed = True
+            order.save(update_fields=["is_admin_viewed"])
+
+        serializer = AdminOrderDetailSerializer(
+            order,
+            context={"request": request}
+        )
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        try:
+          order = Order.objects.get(id=pk)
+        except Order.DoesNotExist:
+          return Response(
+            {"error": "Order not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    #  OLD VALUES (important)
+        old_status = order.status
+        old_courier = order.courier_name
+        old_tracking = order.tracking_id
+
+    #  NEW VALUES FROM REQUEST
+        new_status = request.data.get("status")
+        new_payment_status = request.data.get("payment_status")
+        courier_name = request.data.get("courier_name")
+        tracking_id = request.data.get("tracking_id")
+
+    # -------- UPDATE DATA --------
+        if new_status:
+           order.status = new_status
+
+        if new_payment_status:
+           order.payment_status = new_payment_status
+
+        if courier_name is not None:
+           order.courier_name = courier_name
+
+        if tracking_id is not None:
+           order.tracking_id = tracking_id
+
+        order.save()
+
+    # -------- MAIL LOGIC --------
+        send_mail = False
+
+    #  Status changed (ex: PROCESSING)
+        if new_status and new_status != old_status:
+           send_mail = True
+
+    #  Courier / Tracking added later
+        if (
+           (courier_name and courier_name != old_courier) or
+           (tracking_id and tracking_id != old_tracking)
+        ):
+           send_mail = True
+
+        if send_mail:
+           print(" ORDER UPDATED, SENDING MAIL...")
+           send_order_status_update_email(order)
+
+        return Response(
+        {
+            "message": "Order updated successfully",
+            "status": order.status,
+            "courier_name": order.courier_name,
+            "tracking_id": order.tracking_id,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+
+# -----------------------------
+# SITE SETTINGS (COD / CANCEL / RETURN)
+# -----------------------------
+class AdminSiteSettingsAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        settings_obj, created = SiteSettings.objects.get_or_create(
+            id=1,
+            defaults={
+                "shipping_charge": 0,
+                "free_shipping_min_amount": 0,
+            }
+        )
+        serializer = SiteSettingsSerializer(settings_obj)
+        return Response(serializer.data)
+
+    def put(self, request):
+        settings_obj, created = SiteSettings.objects.get_or_create(
+            id=1,
+            defaults={
+                "shipping_charge": 0,
+                "free_shipping_min_amount": 0,
+            }
+        )
+        serializer = SiteSettingsSerializer(
+            settings_obj, data=request.data, partial=True
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "Settings updated", "data": serializer.data}
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class PublicSiteSettingsAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        settings = SiteSettings.objects.first()
+
+        if not settings:
+            return Response({
+                "enable_cod": False,
+                "shipping_charge": 0,
+                "free_shipping_min_amount": 0,
+            })
+
+        return Response({
+            "enable_cod": settings.enable_cod,
+            "shipping_charge": settings.shipping_charge,
+            "free_shipping_min_amount": settings.free_shipping_min_amount,
+        })
+
+
+
+# -----------------------------
+# DASHBOARD STATS + CACHE
+# -----------------------------
+
+
+
+
+class AdminDashboardStatsAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        # ---------------- CACHE ----------------
+        cached_data = cache.get("admin_dashboard_stats")
+        if cached_data:
+            return Response(cached_data)
+
+        # ---------------- BASIC COUNTS ----------------
+        total_users = User.objects.filter(is_staff=False).count()
+        total_orders = Order.objects.count()
+        total_subscribers = Subscriber.objects.count()
+
+        # ---------------- REVENUE ----------------
+        total_revenue = (
+            Order.objects.filter(
+                Q(payment_status="PAID") |
+                Q(payment_status="COD", status="DELIVERED")
+            )
+            .aggregate(total=Sum("total_amount"))["total"]
+            or 0
+        )
+
+        today = now().date()
+
+        todays_orders = Order.objects.filter(
+            created_at__date=today
+        ).count()
+
+        todays_revenue = (
+            Order.objects.filter(created_at__date=today)
+            .filter(
+                Q(payment_status="PAID") |
+                Q(payment_status="COD", status="DELIVERED")
+            )
+            .aggregate(total=Sum("total_amount"))["total"]
+            or 0
+        )
+
+        pending_orders = Order.objects.filter(status="PENDING").count()
+        delivered_orders = Order.objects.filter(status="DELIVERED").count()
+
+        # ---------------- BEST SELLERS (VARIANT → PRODUCT) ----------------
+        best_sellers = (
+            OrderItem.objects
+            .values(
+                "variant__product_id",
+                "variant__product__name",
+                "variant__product__price",
+                "variant__product__sale_price",
+            )
+            .annotate(total_sold=Sum("quantity"))
+            .order_by("-total_sold")[:5]
+        )
+
+        # Attach product image
+        for item in best_sellers:
+            img = ProductImage.objects.filter(
+                product_id=item["variant__product_id"]
+            ).first()
+            item["image"] = ( request.build_absolute_uri(img.image.url)
+                               if img and img.image
+                                  else None
+                              )
+
+
+        # ---------------- LOW STOCK (BASED ON VARIANTS) ----------------
+        LOW_STOCK_THRESHOLD = 5
+
+        low_stock_count = (
+            Product.objects
+            .filter(
+                variants__stock__lte=LOW_STOCK_THRESHOLD,
+                is_active=True
+            )
+            .distinct()
+            .count()
+        )
+
+        # ---------------- PRODUCT / CATEGORY COUNTS ----------------
+        total_products = Product.objects.count()
+        active_products = Product.objects.filter(is_active=True).count()
+        total_categories = Category.objects.count()
+
+        # ---------------- FINAL RESPONSE ----------------
+        data = {
+            "total_users": total_users,
+            "total_orders": total_orders,
+            "total_revenue": float(total_revenue),
+            "todays_orders": todays_orders,
+            "todays_revenue": float(todays_revenue),
+            "pending_orders": pending_orders,
+            "delivered_orders": delivered_orders,
+            "best_selling_products": list(best_sellers),
+            "low_stock_count": low_stock_count,
+            "low_stock_threshold": LOW_STOCK_THRESHOLD,
+            "total_products": total_products,
+            "active_products": active_products,
+            "total_categories": total_categories,
+            "total_subscribers": total_subscribers,
+        }
+
+        cache.set("admin_dashboard_stats", data, timeout=60)
+        return Response(data)
+
+
+
+class AdminLowStockProductsAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        try:
+            threshold = int(request.GET.get("threshold", 5))
+        except ValueError:
+            threshold = 5
+
+        #  Find products where ANY variant stock <= threshold
+        low_stock_products = (
+            Product.objects
+            .filter(
+                variants__stock__lte=threshold,
+                is_active=True
+            )
+            .distinct()
+            .prefetch_related("variants", "images")
+        )
+
+        serializer = ProductSerializer(
+            low_stock_products,
+            many=True,
+            context={"request": request},
+        )
+
+        return Response(
+            {
+                "threshold": threshold,
+                "count": len(serializer.data),
+                "results": serializer.data,
+            }
+        )
+
+# -----------------------------
+# COUPON MANAGEMENT
+# -----------------------------
+class AdminCouponListCreateAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get(self, request):
+        coupons = Coupon.objects.all().order_by("-id")
+        serializer = AdminCouponSerializer(coupons, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = AdminCouponSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "Coupon created", "data": serializer.data},
+                status=201
+            )
+        return Response(serializer.errors, status=400)
+
+
+
+class AdminCouponDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+
+    def get_object(self, pk):
+        try:
+            return Coupon.objects.get(id=pk)
+        except Coupon.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        coupon = self.get_object(pk)
+        if not coupon:
+            return Response({"error": "Coupon not found"}, status=404)
+
+        serializer = AdminCouponSerializer(coupon)
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        coupon = self.get_object(pk)
+        if not coupon:
+            return Response({"error": "Coupon not found"}, status=404)
+
+        serializer = AdminCouponSerializer(
+            coupon, data=request.data, partial=True
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "Coupon updated", "data": serializer.data}
+            )
+
+        return Response(serializer.errors, status=400)
+
+    def delete(self, request, pk):
+        coupon = self.get_object(pk)
+        if not coupon:
+            return Response({"error": "Coupon not found"}, status=404)
+
+        coupon.delete()
+        return Response({"message": "Coupon deleted"}, status=200)
+
+
+
+
+
+
+# -----------------------------
+# OFFER MANAGEMENT
+# -----------------------------
+
+
+class AdminOfferListCreateAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    # LIST OFFERS
+    def get(self, request):
+        offers = Offer.objects.all().order_by("-created_at")
+        serializer = AdminOfferSerializer(
+            offers,
+            many=True,
+            context={"request": request}
+        )
+        return Response(serializer.data, status=200)
+
+    # CREATE OFFER
+    def post(self, request):
+        serializer = AdminOfferSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+
+        if not serializer.is_valid():
+            print(" OFFER CREATE ERRORS:", serializer.errors)
+            return Response(serializer.errors, status=400)
+
+        serializer.save()
+        return Response(
+            {
+                "message": "Offer created successfully",
+                "data": serializer.data
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+
+class AdminOfferDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_object(self, pk):
+        try:
+            return Offer.objects.get(pk=pk)
+        except Offer.DoesNotExist:
+            return None
+
+    # GET SINGLE OFFER
+    def get(self, request, pk):
+        offer = self.get_object(pk)
+        if not offer:
+            return Response(
+                {"error": "Offer not found"},
+                status=404
+            )
+
+        serializer = AdminOfferSerializer(
+            offer,
+            context={"request": request}
+        )
+        return Response(serializer.data, status=200)
+
+    # UPDATE OFFER
+    def put(self, request, pk):
+        offer = self.get_object(pk)
+        if not offer:
+            return Response(
+                {"error": "Offer not found"},
+                status=404
+            )
+
+        serializer = AdminOfferSerializer(
+            offer,
+            data=request.data,
+            partial=True,
+            context={"request": request}
+        )
+
+        if not serializer.is_valid():
+            print("OFFER UPDATE ERRORS:", serializer.errors)
+            return Response(serializer.errors, status=400)
+
+        serializer.save()
+        return Response(
+            {
+                "message": "Offer updated successfully",
+                "data": serializer.data
+            },
+            status=200
+        )
+
+    
+    # DELETE OFFER
+    def delete(self, request, pk):
+       offer = self.get_object(pk)
+       if not offer:
+          return Response(
+            {"error": "Offer not found"},
+            status=404
+        )
+
+    #  Clear offer from products (safe)
+       offer.products.update(offer=None)
+
+       offer.delete()
+       return Response(
+             {"message": "Offer deleted successfully"},
+           status=200
+           )
+
