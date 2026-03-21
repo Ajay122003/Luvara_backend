@@ -33,16 +33,14 @@ from addresses.models import Address
 
 def get_cashfree_client():
     if settings.CASHFREE_ENVIRONMENT.lower() == "production":
-        env = Cashfree.PRODUCTION
+        Cashfree.XEnvironment = Cashfree.PRODUCTION
     else:
-        env = Cashfree.SANDBOX
+        Cashfree.XEnvironment = Cashfree.SANDBOX
 
-    return Cashfree(
-        XClientId=settings.CASHFREE_CLIENT_ID,
-        XClientSecret=settings.CASHFREE_CLIENT_SECRET,
-        XEnvironment=env
-    )
+    Cashfree.XClientId = settings.CASHFREE_CLIENT_ID
+    Cashfree.XClientSecret = settings.CASHFREE_CLIENT_SECRET
 
+    return Cashfree
 
     
 
@@ -108,7 +106,7 @@ class CreateCashfreeOrderAPIView(APIView):
 
             cashfree = get_cashfree_client()
 
-            response = cashfree.PGCreateOrder(
+            response = Cashfree.PGCreateOrder(
                 x_api_version="2023-08-01",
                 create_order_request=order_request
             )
@@ -170,7 +168,7 @@ class VerifyCashfreePaymentAPIView(APIView):
 
             cashfree = get_cashfree_client()
 
-            response = cashfree.PGFetchOrder(
+            response = Cashfree.PGFetchOrder(
                 x_api_version="2023-08-01",
                 order_id=order_number
             )

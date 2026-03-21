@@ -298,7 +298,7 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = False 
 
 CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
+    "http://localhost:5000",
     "http://localhost:5173",
     # "https://localhost:5173",
     "https://luvarastore.com",
