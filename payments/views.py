@@ -40,7 +40,7 @@ def get_cashfree_client():
     Cashfree.XClientId = settings.CASHFREE_CLIENT_ID
     Cashfree.XClientSecret = settings.CASHFREE_CLIENT_SECRET
 
-    return Cashfree
+    return Cashfree()
 
     
 
@@ -106,7 +106,7 @@ class CreateCashfreeOrderAPIView(APIView):
 
             cashfree = get_cashfree_client()
 
-            response = Cashfree.PGCreateOrder(
+            response = cashfree.PGCreateOrder(
                 x_api_version="2023-08-01",
                 create_order_request=order_request
             )
@@ -168,7 +168,7 @@ class VerifyCashfreePaymentAPIView(APIView):
 
             cashfree = get_cashfree_client()
 
-            response = Cashfree.PGFetchOrder(
+            response = cashfree.PGFetchOrder(
                 x_api_version="2023-08-01",
                 order_id=order_number
             )
