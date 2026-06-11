@@ -36,6 +36,7 @@ SECRET_KEY = 'django-insecure-p7yjse$hi8n!)=zz(o+-vz4uj1cgp9$0)1f6_139er4!f7m)n#
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
+    "217.216.78.192",
     ".onrender.com",
     "luvarastore.com",
     "www.luvarastore.com",
