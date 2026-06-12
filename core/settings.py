@@ -40,6 +40,7 @@ ALLOWED_HOSTS = [
     ".onrender.com",
     "luvarastore.com",
     "www.luvarastore.com",
+    "api.luvarastore.com",
 ]
 
 # DEBUG = False
@@ -294,6 +295,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "https://luvarastore.com",
     "https://www.luvarastore.com",
+    "http://217.216.78.192:8000",
+    "https://api.luvarastore.com",
  ]
 
 CORS_ALLOW_CREDENTIALS = False 
@@ -305,6 +308,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://luvarastore.com",
     "https://www.luvarastore.com",
     "https://luvara-backend.onrender.com",
+    "http://217.216.78.192:8000",
+     "https://api.luvarastore.com"
 ]
 
 CORS_ALLOW_HEADERS = [
