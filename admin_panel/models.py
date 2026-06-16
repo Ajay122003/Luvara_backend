@@ -38,7 +38,7 @@ class AdminOTP(models.Model):
 
 class Banner(models.Model):
     video = CloudinaryField(
-        "video",
+        resource_type="video",
         folder="banner_videos"
     )
 
