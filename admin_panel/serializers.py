@@ -459,7 +459,15 @@ class AdminOfferSerializer(serializers.ModelSerializer):
     
 
 class BannerSerializer(serializers.ModelSerializer):
+    video = serializers.SerializerMethodField()
 
     class Meta:
         model = Banner
         fields = "__all__"
+
+    def get_video(self, obj):
+        if obj.video:
+            return obj.video.build_url(
+                resource_type="video"
+            )
+        return None
