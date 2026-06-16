@@ -2,6 +2,7 @@ from django.db import models
 from django.utils.timezone import now
 from datetime import timedelta
 from users.models import User
+from cloudinary.models import CloudinaryField
 
 
 from django.db import models
@@ -34,9 +35,11 @@ class AdminOTP(models.Model):
     
 
 
+
+
 class Banner(models.Model):
-    video = models.FileField(
-        upload_to="banners/videos/"
+    video = CloudinaryField(
+        resource_type="video"
     )
 
     is_active = models.BooleanField(default=True)
