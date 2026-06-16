@@ -458,6 +458,11 @@ class AdminOfferSerializer(serializers.ModelSerializer):
         return data
     
 
+class BannerCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Banner
+        fields = ["video", "is_active"]
+
 class BannerSerializer(serializers.ModelSerializer):
     video = serializers.SerializerMethodField()
 
@@ -466,8 +471,9 @@ class BannerSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_video(self, obj):
-        if obj.video:
+        try:
             return obj.video.build_url(
                 resource_type="video"
             )
-        return None
+        except:
+            return None

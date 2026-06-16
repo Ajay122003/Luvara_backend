@@ -1079,22 +1079,26 @@ class AdminBannerListCreateAPIView(APIView):
     # CREATE
     def post(self, request):
 
-        serializer = BannerSerializer(
-            data=request.data,
-            context={"request": request}
-        )
+        serializer = BannerCreateSerializer(
+        data=request.data,
+        context={"request": request}
+    )
 
         if serializer.is_valid():
-            serializer.save()
 
-            return Response(
-                {
-                    "message": "Banner created successfully",
-                    "data": serializer.data
-                },
-                status=status.HTTP_201_CREATED
-            )
+           banner = serializer.save()
 
+           return Response(
+        {
+            "message": "Banner created successfully",
+            "data": BannerSerializer(
+                banner,
+                context={"request": request}
+            ).data
+        },
+        status=status.HTTP_201_CREATED
+    )
+        
         return Response(
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
@@ -1140,22 +1144,26 @@ class AdminBannerDetailAPIView(APIView):
                 status=404
             )
 
-        serializer = BannerSerializer(
-            banner,
-            data=request.data,
-            partial=True,
-            context={"request": request}
-        )
+        serializer = BannerCreateSerializer(
+    banner,
+    data=request.data,
+    partial=True,
+    context={"request": request}
+)
 
         if serializer.is_valid():
-            serializer.save()
 
-            return Response(
-                {
-                    "message": "Banner updated successfully",
-                    "data": serializer.data
-                }
-            )
+           banner = serializer.save()
+
+           return Response(
+        {
+            "message": "Banner updated successfully",
+            "data": BannerSerializer(
+                banner,
+                context={"request": request}
+            ).data
+        }
+    )
 
         return Response(
             serializer.errors,
