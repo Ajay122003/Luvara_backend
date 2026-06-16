@@ -36,10 +36,10 @@ class AdminOTP(models.Model):
 
 
 
-
 class Banner(models.Model):
     video = CloudinaryField(
-        resource_type="video"
+        "video",
+        folder="banner_videos"
     )
 
     is_active = models.BooleanField(default=True)
@@ -48,9 +48,9 @@ class Banner(models.Model):
 
     def save(self, *args, **kwargs):
         if self.is_active:
-            Banner.objects.exclude(
-                id=self.id
-            ).update(is_active=False)
+            Banner.objects.exclude(id=self.id).update(
+                is_active=False
+            )
 
         super().save(*args, **kwargs)
 
