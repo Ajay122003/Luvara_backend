@@ -1086,8 +1086,8 @@ class AdminBannerListCreateAPIView(APIView):
         context={"request": request}
     )
         
-         print("VALID =", serializer.is_valid())
-         print("ERRORS =", serializer.errors)
+        print("VALID =", serializer.is_valid())
+        print("ERRORS =", serializer.errors)
 
         if serializer.is_valid():
 
