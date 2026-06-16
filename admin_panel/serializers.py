@@ -7,7 +7,7 @@ from products.models import Product, ProductImage, ProductVariant
 from products.serializers import ProductSerializer
 from orders.models import Order, OrderItem
 from addresses.serializers import *
-from .models import SiteSettings
+from .models import SiteSettings , Banner
 from django.utils import timezone
 from coupons.models import Coupon
 from offers.models import Offer
@@ -456,3 +456,10 @@ class AdminOfferSerializer(serializers.ModelSerializer):
             })
 
         return data
+    
+
+class BannerSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Banner
+        fields = "__all__"

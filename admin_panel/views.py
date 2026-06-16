@@ -11,7 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.db.models import Sum, Q
 import json
 from .permissions import IsAdminUserCustom
-from .models import SiteSettings, AdminOTP
+from .models import SiteSettings, AdminOTP ,Banner
 from .serializers import *
 from .utils_email import send_admin_otp_email, generate_otp , send_order_status_update_email
 from subscriptions.models import Subscriber
@@ -1054,4 +1054,130 @@ class AdminOfferDetailAPIView(APIView):
              {"message": "Offer deleted successfully"},
            status=200
            )
+    
+
+# -----------------------------
+# BANNER MANAGEMENT
+# -----------------------------
+
+class AdminBannerListCreateAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    # LIST
+    def get(self, request):
+        banners = Banner.objects.all().order_by("-created_at")
+
+        serializer = BannerSerializer(
+            banners,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+    # CREATE
+    def post(self, request):
+
+        serializer = BannerSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+
+            return Response(
+                {
+                    "message": "Banner created successfully",
+                    "data": serializer.data
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class AdminBannerDetailAPIView(APIView):
+    permission_classes = [IsAdminUserCustom]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_object(self, pk):
+        try:
+            return Banner.objects.get(pk=pk)
+        except Banner.DoesNotExist:
+            return None
+
+    # GET SINGLE
+    def get(self, request, pk):
+
+        banner = self.get_object(pk)
+
+        if not banner:
+            return Response(
+                {"error": "Banner not found"},
+                status=404
+            )
+
+        serializer = BannerSerializer(
+            banner,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+    # UPDATE
+    def put(self, request, pk):
+
+        banner = self.get_object(pk)
+
+        if not banner:
+            return Response(
+                {"error": "Banner not found"},
+                status=404
+            )
+
+        serializer = BannerSerializer(
+            banner,
+            data=request.data,
+            partial=True,
+            context={"request": request}
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+
+            return Response(
+                {
+                    "message": "Banner updated successfully",
+                    "data": serializer.data
+                }
+            )
+
+        return Response(
+            serializer.errors,
+            status=400
+        )
+
+    # DELETE
+    def delete(self, request, pk):
+
+        banner = self.get_object(pk)
+
+        if not banner:
+            return Response(
+                {"error": "Banner not found"},
+                status=404
+            )
+
+        banner.delete()
+
+        return Response(
+            {
+                "message": "Banner deleted successfully"
+            }
+        )
 

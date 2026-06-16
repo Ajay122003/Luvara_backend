@@ -12,5 +12,8 @@ urlpatterns = [
 
     path("search/", GlobalSearchView.as_view()),
 
+    # Banner
+    path( "banner/", GetBannerAPIView.as_view())
+
     
 ]

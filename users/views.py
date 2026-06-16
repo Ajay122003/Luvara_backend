@@ -11,6 +11,8 @@ from products.models import Product
 from categories.models import Category
 from products.serializers import ProductSerializer
 from categories.serializers import CategorySerializer
+from admin_panel.models import Banner
+from admin_panel.serializers import BannerSerializer
 
 def get_tokens(user):
     refresh = RefreshToken.for_user(user)
@@ -194,4 +196,35 @@ class GlobalSearchView(APIView):
                 "products": product_data
             },
             status=status.HTTP_200_OK
+        )
+    
+
+class GetBannerAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+
+        banner = (
+            Banner.objects
+            .filter(is_active=True)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if not banner:
+            return Response(
+                {
+                    "message": "No active banner found"
+                },
+                status=200
+            )
+
+        serializer = BannerSerializer(
+            banner,
+            context={"request": request}
+        )
+
+        return Response(
+            serializer.data,
+            status=200
         )

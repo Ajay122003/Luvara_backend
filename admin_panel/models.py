@@ -31,3 +31,25 @@ class AdminOTP(models.Model):
 
     def __str__(self):
         return f"OTP for {self.admin.email}"
+    
+
+
+class Banner(models.Model):
+    video = models.FileField(
+        upload_to="banners/videos/"
+    )
+
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.is_active:
+            Banner.objects.exclude(
+                id=self.id
+            ).update(is_active=False)
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Banner {self.id}"

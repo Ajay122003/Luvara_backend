@@ -50,4 +50,9 @@ urlpatterns = [
     path("offers/", AdminOfferListCreateAPIView.as_view()),
     path("offers/<int:pk>/", AdminOfferDetailAPIView.as_view()),
 
+
+    # banner
+    path("banners/", AdminBannerListCreateAPIView.as_view()),
+    path("banners/<int:pk>/", AdminBannerDetailAPIView.as_view())
+
 ]
