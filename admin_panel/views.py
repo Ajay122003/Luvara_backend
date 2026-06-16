@@ -1078,11 +1078,16 @@ class AdminBannerListCreateAPIView(APIView):
 
     # CREATE
     def post(self, request):
+        print("FILES =", request.FILES)
+        print("DATA =", request.data)
 
         serializer = BannerCreateSerializer(
         data=request.data,
         context={"request": request}
     )
+        
+         print("VALID =", serializer.is_valid())
+         print("ERRORS =", serializer.errors)
 
         if serializer.is_valid():
 
