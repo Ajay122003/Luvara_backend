@@ -297,6 +297,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.luvarastore.com",
     "http://217.216.78.192:8000",
     "https://api.luvarastore.com",
+    "http://localhost:5000",
  ]
 
 CORS_ALLOW_CREDENTIALS = False 
@@ -304,12 +305,11 @@ CORS_ALLOW_CREDENTIALS = False
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5000",
     "http://localhost:5173",
-    # "https://localhost:5173",
     "https://luvarastore.com",
     "https://www.luvarastore.com",
     "https://luvara-backend.onrender.com",
     "http://217.216.78.192:8000",
-     "https://api.luvarastore.com"
+    "https://api.luvarastore.com"
 ]
 
 CORS_ALLOW_HEADERS = [
@@ -351,7 +351,7 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 
-DEFAULT_FROM_EMAIL = f"Luvara Store <ajayelango54@gmail.com>"
+DEFAULT_FROM_EMAIL = f"Luvara Store <dharikka8@gmail.com>"
 
 
 

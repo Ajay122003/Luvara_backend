@@ -84,7 +84,7 @@ Please check the admin dashboard for more details.
         subject=subject,
         body=message,
         from_email=settings.DEFAULT_FROM_EMAIL,
-        to=["ajayelango54@gmail.com"],  #  change if needed
+        to=["dharikka8@gmail.com"],  #  change if needed
     )
 
     email.send(fail_silently=False)
