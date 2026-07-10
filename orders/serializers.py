@@ -12,7 +12,7 @@ from coupons.models import Coupon
 from cart.models import CartItem
 from admin_panel.models import SiteSettings
 
-GST_PERCENTAGE = Decimal("3.00")
+GST_PERCENTAGE = Decimal("5.00")
 
 
 # ======================================================
