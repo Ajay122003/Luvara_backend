@@ -36,14 +36,14 @@ SECRET_KEY = 'django-insecure-p7yjse$hi8n!)=zz(o+-vz4uj1cgp9$0)1f6_139er4!f7m)n#
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
-    "217.216.78.192",
+    "157.173.221.105",
     ".onrender.com",
     "luvarastore.com",
     "www.luvarastore.com",
     "api.luvarastore.com",
 ]
 
-# DEBUG = False
+DEBUG = False
 
 DJANGO_ENV = os.getenv("DJANGO_ENV", "development")
 
