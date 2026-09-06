@@ -295,7 +295,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "https://luvarastore.com",
     "https://www.luvarastore.com",
-    "http://217.216.78.192:8000",
+    "http://157.173.221.105:8000",
     "https://api.luvarastore.com",
     "http://localhost:5000",
  ]
@@ -308,7 +308,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://luvarastore.com",
     "https://www.luvarastore.com",
     "https://luvara-backend.onrender.com",
-    "http://217.216.78.192:8000",
+    "http://157.173.221.105:8000",
     "https://api.luvarastore.com"
 ]
 
