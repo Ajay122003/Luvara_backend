@@ -29,7 +29,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-p7yjse$hi8n!)=zz(o+-vz4uj1cgp9$0)1f6_139er4!f7m)n#'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", 'django-insecure-dev-key-change-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 
@@ -37,13 +37,10 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "157.173.221.105",
-    ".onrender.com",
     "luvarastore.com",
     "www.luvarastore.com",
     "api.luvarastore.com",
 ]
-
-DEBUG = False
 
 DJANGO_ENV = os.getenv("DJANGO_ENV", "development")
 
@@ -133,15 +130,6 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 
 
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
 
 
 
@@ -319,7 +307,7 @@ CORS_ALLOW_HEADERS = [
 ]
 
 
-CORS_ALLOW_ALL_ORIGINS = True
+
 
 
 
