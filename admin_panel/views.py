@@ -9,6 +9,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db.models import Sum, Q
+from django.db.models.deletion import ProtectedError
 import json
 from .permissions import IsAdminUserCustom
 from .models import SiteSettings, AdminOTP ,Banner
@@ -278,7 +279,24 @@ class AdminCategoryDetailAPIView(APIView):
                 {"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        category.delete()
+        if category.products.exists():
+            return Response(
+                {
+                    "error": "Cannot delete this category because it has associated products. Please remove or move the products first."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            category.delete()
+        except ProtectedError:
+            return Response(
+                {
+                    "error": "Cannot delete this category because it has associated products. Please remove or move the products first."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         return Response(
             {"message": "Category deleted successfully"},
             status=status.HTTP_200_OK,

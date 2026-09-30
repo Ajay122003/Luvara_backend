@@ -15,7 +15,7 @@ from cashfree_pg.models.create_order_request import CreateOrderRequest
 from cashfree_pg.models.customer_details import CustomerDetails
 
 from .serializers import  VerifyPaymentSerializer
-from orders.models import Order
+from orders.models import Order, build_shipping_address_snapshot
 from orders.serializers import *
 from orders.utils import (
     send_order_invoice_email,
@@ -129,7 +129,10 @@ class CreateCashfreeOrderAPIView(APIView):
                 shipping=data["shipping_amount"],
                 gst=data["gst_amount"],
                 total=data["total"],
-                address_id=data["address_obj"].id
+                address_id=data["address_obj"].id,
+                shipping_address_snapshot=build_shipping_address_snapshot(
+                    data["address_obj"]
+                ),
             )
 
             print(" PENDING ORDER SAVED")
@@ -189,6 +192,17 @@ class VerifyCashfreePaymentAPIView(APIView):
             print(" PENDING DATA:", pending.__dict__)
 
             user = pending.user
+            address = (
+                Address.objects.filter(pk=pending.address_id).first()
+                if pending.address_id
+                else None
+            )
+            address_snapshot = build_shipping_address_snapshot(address)
+            address_snapshot.update({
+                key: value
+                for key, value in (pending.shipping_address_snapshot or {}).items()
+                if key in address_snapshot
+            })
 
             order = Order.objects.create(
                 user=user,
@@ -200,7 +214,8 @@ class VerifyCashfreePaymentAPIView(APIView):
                 gst_amount=pending.gst,
                 total_amount=pending.total,
 
-                address_id=pending.address_id,
+                address=address,
+                **address_snapshot,
 
                 payment_method="ONLINE",
                 payment_status="PAID"
@@ -314,6 +329,17 @@ class CashfreeWebhookAPIView(APIView):
 
                     pending = PendingOrder.objects.get(order_number=order_number)
                     user = pending.user
+                    address = (
+                        Address.objects.filter(pk=pending.address_id).first()
+                        if pending.address_id
+                        else None
+                    )
+                    address_snapshot = build_shipping_address_snapshot(address)
+                    address_snapshot.update({
+                        key: value
+                        for key, value in (pending.shipping_address_snapshot or {}).items()
+                        if key in address_snapshot
+                    })
 
                     order = Order.objects.create(
                         user=user,
@@ -325,7 +351,8 @@ class CashfreeWebhookAPIView(APIView):
                         gst_amount=pending.gst,
                         total_amount=pending.total,
 
-                        address_id=pending.address_id,
+                        address=address,
+                        **address_snapshot,
 
                         payment_method="ONLINE",
                         payment_status="PAID"

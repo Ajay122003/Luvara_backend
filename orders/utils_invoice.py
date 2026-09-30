@@ -27,17 +27,17 @@ def generate_invoice_pdf(order):
     elements.append(Spacer(1, 0.3 * inch))
 
     # ================= ADDRESS =================
-    address = order.address
+    address = order.get_shipping_address_snapshot()
     if address:
         elements.append(Paragraph("<b>Delivery Address</b>", styles["Heading3"]))
         elements.append(Spacer(1, 0.1 * inch))
 
         address_lines = [
-            address.name,
-            address.phone,
-            address.full_address,
-            f"{address.city}, {address.state}",
-            f"Pincode: {address.pincode}",
+            address["name"],
+            address["phone"],
+            address["full_address"],
+            f"{address['city']}, {address['state']}",
+            f"Pincode: {address['pincode']}",
         ]
 
         for line in address_lines:

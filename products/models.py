@@ -8,7 +8,7 @@ from decimal import Decimal
 class Product(models.Model):
     category = models.ForeignKey(
         Category,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="products"
     )
 

@@ -4,7 +4,6 @@ from django.contrib.auth import authenticate
 from product_collections.models import Collection
 from users.models import User
 from products.models import Product, ProductImage, ProductVariant
-from products.serializers import ProductSerializer
 from orders.models import Order, OrderItem
 from addresses.serializers import *
 from .models import SiteSettings , Banner
@@ -166,6 +165,7 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
 
     items = serializers.SerializerMethodField()
     address_details = serializers.SerializerMethodField()
+    shipping_address = serializers.SerializerMethodField()
 
     #  PRICE FIELDS – force number (NOT Decimal / string)
     subtotal_amount = serializers.SerializerMethodField()
@@ -191,6 +191,7 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             "tracking_id",
             "created_at",
             "address_details",
+            "shipping_address",
             "items",
             
         ]
@@ -208,40 +209,37 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
             )
 
             unit_price = float(unit_price)
-            total_price = unit_price * item.quantity
-
             items.append({
                 "id": item.id,
                 "quantity": item.quantity,
 
                 "unit_price": unit_price,
-                "total_price": total_price,
+                "total_price": float(item.total_price),
 
                 "color": item.color,
-                "size": item.variant.size if item.variant else None,
-
-                "product": ProductSerializer(
-                    item.variant.product,
-                    context=self.context
-                ).data if item.variant else None,
+                "size": item.size,
+                "product_name": item.product_name,
+                "product_image": item.product_image,
+                "product": (
+                    {
+                        "name": item.product_name,
+                        "images": [{"image_url": item.product_image}]
+                        if item.product_image
+                        else [],
+                    }
+                    if item.product_name or item.product_image
+                    else None
+                ),
             })
 
         return items
 
     # ================= ADDRESS =================
     def get_address_details(self, obj):
-        address = obj.address
-        if not address:
-            return None
+        return obj.get_shipping_address_snapshot()
 
-        return {
-            "name": address.name,
-            "phone": address.phone,
-            "pincode": address.pincode,
-            "city": address.city,
-            "state": address.state,
-            "full_address": address.full_address,
-        }
+    def get_shipping_address(self, obj):
+        return obj.get_shipping_address_snapshot()
 
     # ================= PRICE FIX ( IMPORTANT) =================
     def get_subtotal_amount(self, obj):

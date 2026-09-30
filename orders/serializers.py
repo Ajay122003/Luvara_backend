@@ -3,10 +3,14 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Order, OrderItem, ReturnRequest
+from .models import (
+    Order,
+    OrderItem,
+    ReturnRequest,
+    build_shipping_address_snapshot,
+)
 from products.models import ProductVariant
 from addresses.models import Address
-from products.serializers import ProductSerializer
 from .utils import generate_order_number, send_admin_new_order_alert
 from coupons.models import Coupon
 from cart.models import CartItem
@@ -188,6 +192,7 @@ class OrderCreateSerializer(serializers.Serializer):
         order = Order.objects.create(
           user=user,
           address=validated_data["address_obj"],
+                    **build_shipping_address_snapshot(validated_data["address_obj"]),
           order_number=generate_order_number(),
           subtotal_amount=validated_data["subtotal"],
           discount_amount=validated_data["discount"],
@@ -204,6 +209,16 @@ class OrderCreateSerializer(serializers.Serializer):
         for item in validated_data["cart_items"]:
 
            product = item.variant.product
+           product_image = ""
+           image = product.images.first()
+           if image:
+              try:
+                 product_image = image.image.url
+                 request = self.context.get("request")
+                 if request:
+                    product_image = request.build_absolute_uri(product_image)
+              except Exception:
+                 product_image = ""
 
            original_price = product.price
            unit_price = product.get_effective_price()
@@ -212,6 +227,9 @@ class OrderCreateSerializer(serializers.Serializer):
            OrderItem.objects.create(
               order=order,
               variant=item.variant,
+              product_name=product.name,
+              product_image=product_image,
+              size=item.variant.size,
               quantity=item.quantity,
               original_price=original_price,
               unit_price=unit_price,
@@ -243,13 +261,14 @@ class OrderCreateSerializer(serializers.Serializer):
 # ======================================================
 class OrderItemDetailSerializer(serializers.ModelSerializer):
     product = serializers.SerializerMethodField()
-    size = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = [
             "id",
             "product",
+            "product_name",
+            "product_image",
             "size",
             "quantity",
             "original_price",
@@ -259,21 +278,20 @@ class OrderItemDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_product(self, obj):
-        request = self.context.get("request")
-        if obj.variant and obj.variant.product:
-            return ProductSerializer(
-                obj.variant.product,
-                context={"request": request}
-            ).data
-        return None
-
-    def get_size(self, obj):
-        return obj.variant.size if obj.variant else None
+        if not obj.product_name and not obj.product_image:
+            return None
+        images = (
+            [{"image_url": obj.product_image}]
+            if obj.product_image
+            else []
+        )
+        return {"name": obj.product_name, "images": images}
 
 
 class OrderDetailSerializer(serializers.ModelSerializer):
     items = OrderItemDetailSerializer(many=True)
     address = serializers.SerializerMethodField()
+    shipping_address = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -292,21 +310,15 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "tracking_id",
             "created_at",
             "address",
+            "shipping_address",
             "items",
         ]
 
     def get_address(self, obj):
-        if not obj.address:
-            return None
+        return obj.get_shipping_address_snapshot()
 
-        return {
-            "name": obj.address.name,
-            "phone": obj.address.phone,
-            "pincode": obj.address.pincode,
-            "city": obj.address.city,
-            "state": obj.address.state,
-            "full_address": obj.address.full_address,
-        }
+    def get_shipping_address(self, obj):
+        return obj.get_shipping_address_snapshot()
 
 
 class OrderListSerializer(serializers.ModelSerializer):
