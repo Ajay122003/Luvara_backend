@@ -1,6 +1,6 @@
 import logging
 from rest_framework.permissions import AllowAny
-from django.db.models import Case, CharField, F, Sum, Value, When
+from django.db.models import Case, CharField, F, Sum, TextField, Value, When
 from django.core.cache import cache
 from django.utils.timezone import now
 from rest_framework.views import APIView
@@ -805,11 +805,34 @@ class AdminDashboardStatsAPIView(APIView):
                             Cast(F("variant__product_id"), CharField()),
                         ),
                     ),
-                    default=Concat(
-                        Value("snapshot:"),
-                        Coalesce("product_name", Value("")),
-                        Value("|"),
-                        Coalesce("product_image", Value("")),
+                    default=Case(
+                        When(
+                            Q(product_name="", product_image=""),
+                            then=Concat(
+                                Value("snapshot-item:", output_field=CharField()),
+                                Cast(F("pk"), output_field=CharField()),
+                                output_field=CharField(),
+                            ),
+                        ),
+                        default=Concat(
+                            Value("snapshot:", output_field=CharField()),
+                            Coalesce(
+                                "product_name",
+                                Value("", output_field=CharField()),
+                                output_field=CharField(),
+                            ),
+                            Value("|", output_field=CharField()),
+                            Cast(
+                                Coalesce(
+                                    "product_image",
+                                    Value("", output_field=TextField()),
+                                    output_field=TextField(),
+                                ),
+                                output_field=CharField(),
+                            ),
+                            output_field=CharField(),
+                        ),
+                        output_field=CharField(),
                     ),
                     output_field=CharField(),
                 ),
@@ -824,10 +847,14 @@ class AdminDashboardStatsAPIView(APIView):
                 snapshot_image=Case(
                     When(
                         variant__product_id__isnull=True,
-                        then=Coalesce("product_image", Value("")),
+                        then=Coalesce(
+                            "product_image",
+                            Value("", output_field=TextField()),
+                            output_field=TextField(),
+                        ),
                     ),
-                    default=Value(""),
-                    output_field=CharField(),
+                    default=Value("", output_field=TextField()),
+                    output_field=TextField(),
                 ),
             )
             .values(
