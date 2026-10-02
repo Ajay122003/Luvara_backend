@@ -1,6 +1,6 @@
 import logging
 from rest_framework.permissions import AllowAny
-from django.db.models import Sum
+from django.db.models import Case, CharField, F, Sum, Value, When
 from django.core.cache import cache
 from django.utils.timezone import now
 from rest_framework.views import APIView
@@ -8,7 +8,8 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.db.models import Sum, Q
+from django.db.models import Q
+from django.db.models.functions import Cast, Coalesce, Concat
 from django.db.models.deletion import ProtectedError
 import json
 from .permissions import IsAdminUserCustom
@@ -792,28 +793,80 @@ class AdminDashboardStatsAPIView(APIView):
         pending_orders = Order.objects.filter(status="PENDING").count()
         delivered_orders = Order.objects.filter(status="DELIVERED").count()
 
-        # ---------------- BEST SELLERS (VARIANT → PRODUCT) ----------------
+        # ---------------- BEST SELLERS (LIVE PRODUCT OR ITEM SNAPSHOT) ----------------
         best_sellers = (
             OrderItem.objects
+            .annotate(
+                product_group=Case(
+                    When(
+                        variant__product_id__isnull=False,
+                        then=Concat(
+                            Value("product:"),
+                            Cast(F("variant__product_id"), CharField()),
+                        ),
+                    ),
+                    default=Concat(
+                        Value("snapshot:"),
+                        Coalesce("product_name", Value("")),
+                        Value("|"),
+                        Coalesce("product_image", Value("")),
+                    ),
+                    output_field=CharField(),
+                ),
+                display_name=Case(
+                    When(
+                        variant__product_id__isnull=False,
+                        then=F("variant__product__name"),
+                    ),
+                    default=F("product_name"),
+                    output_field=CharField(),
+                ),
+                snapshot_image=Case(
+                    When(
+                        variant__product_id__isnull=True,
+                        then=Coalesce("product_image", Value("")),
+                    ),
+                    default=Value(""),
+                    output_field=CharField(),
+                ),
+            )
             .values(
+                "product_group",
                 "variant__product_id",
-                "variant__product__name",
-                "variant__product__price",
-                "variant__product__sale_price",
+                "display_name",
+                "snapshot_image",
             )
             .annotate(total_sold=Sum("quantity"))
             .order_by("-total_sold")[:5]
         )
 
-        # Attach product image
+        # Resolve current images for live products; deleted products use item snapshots.
         for item in best_sellers:
-            img = ProductImage.objects.filter(
-                product_id=item["variant__product_id"]
-            ).first()
-            item["image"] = ( request.build_absolute_uri(img.image.url)
-                               if img and img.image
-                                  else None
-                              )
+            product_id = item["variant__product_id"]
+            image_url = None
+            if product_id:
+                img = ProductImage.objects.filter(product_id=product_id).first()
+                if img and img.image:
+                    try:
+                        image_url = request.build_absolute_uri(img.image.url)
+                    except (ValueError, OSError):
+                        image_url = None
+
+                if not image_url:
+                    snapshot_image = (
+                        OrderItem.objects.filter(variant__product_id=product_id)
+                        .exclude(product_image="")
+                        .values_list("product_image", flat=True)
+                        .first()
+                    )
+                    image_url = snapshot_image or None
+            else:
+                image_url = item["snapshot_image"] or None
+
+            item["variant__product__name"] = item.pop("display_name") or "Product details unavailable"
+            item["image"] = image_url
+            item["product_key"] = item.pop("product_group")
+            item.pop("snapshot_image", None)
 
 
         # ---------------- LOW STOCK (BASED ON VARIANTS) ----------------
