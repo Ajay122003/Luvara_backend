@@ -24,10 +24,75 @@ from orders.utils import (
 from orders.utils_invoice import generate_invoice_pdf
 
 
-from products.models import ProductVariant
 from .models import PendingOrder
 from orders.utils import generate_order_number
 from addresses.models import Address
+
+
+@transaction.atomic
+def finalize_cashfree_order(order_number):
+    pending = (
+        PendingOrder.objects
+        .select_for_update()
+        .filter(order_number=order_number)
+        .first()
+    )
+    order = Order.objects.select_for_update().filter(
+        order_number=order_number
+    ).first()
+
+    if pending is None:
+        if order is None:
+            raise PendingOrder.DoesNotExist
+        return order, False
+
+    address = (
+        Address.objects.filter(pk=pending.address_id).first()
+        if pending.address_id
+        else None
+    )
+    address_snapshot = build_shipping_address_snapshot(address)
+    address_snapshot.update({
+        key: value
+        for key, value in (pending.shipping_address_snapshot or {}).items()
+        if key in address_snapshot
+    })
+
+    if order is None:
+        order = Order.objects.create(
+            user=pending.user,
+            order_number=order_number,
+            subtotal_amount=pending.subtotal,
+            discount_amount=pending.discount,
+            shipping_amount=pending.shipping,
+            gst_amount=pending.gst,
+            total_amount=pending.total,
+            address=address,
+            **address_snapshot,
+            payment_method="ONLINE",
+            payment_status="PAID",
+        )
+
+    existing_variant_ids = set(
+        order.items.values_list("variant_id", flat=True)
+    )
+    missing_items = [
+        item for item in pending.cart_data
+        if item["variant_id"] not in existing_variant_ids
+    ]
+    created_items = create_order_items(order, missing_items)
+
+    for _, variant, quantity in created_items:
+        variant.stock -= quantity
+        variant.save(update_fields=["stock"])
+
+    if order.items.count() < len(pending.cart_data):
+        raise ValueError("Order items could not be fully created")
+
+    CartItem.objects.filter(user=pending.user).delete()
+    pending.delete()
+
+    return order, bool(created_items)
 
 
 
@@ -118,10 +183,11 @@ class CreateCashfreeOrderAPIView(APIView):
                 user=user,
                 order_number=order_number,
                 cart_data=[
-                    {
-                        "variant_id": item.variant.id,
-                        "quantity": item.quantity
-                    }
+                    build_order_item_snapshot(
+                        item.variant,
+                        item.quantity,
+                        request=request,
+                    )
                     for item in data["cart_items"]
                 ],
                 subtotal=data["subtotal"],
@@ -183,74 +249,17 @@ class VerifyCashfreePaymentAPIView(APIView):
             return Response({"payment_status": "PENDING"})
 
         if response.data.order_status == "PAID":
+            order, created = finalize_cashfree_order(order_number)
 
-            if Order.objects.filter(order_number=order_number).exists():
+            if not created:
                 print(" ALREADY CREATED")
                 return Response({"payment_status": "PAID"})
-
-            pending = PendingOrder.objects.get(order_number=order_number)
-            print(" PENDING DATA:", pending.__dict__)
-
-            user = pending.user
-            address = (
-                Address.objects.filter(pk=pending.address_id).first()
-                if pending.address_id
-                else None
-            )
-            address_snapshot = build_shipping_address_snapshot(address)
-            address_snapshot.update({
-                key: value
-                for key, value in (pending.shipping_address_snapshot or {}).items()
-                if key in address_snapshot
-            })
-
-            order = Order.objects.create(
-                user=user,
-                order_number=order_number,
-
-                subtotal_amount=pending.subtotal,
-                discount_amount=pending.discount,
-                shipping_amount=pending.shipping,
-                gst_amount=pending.gst,
-                total_amount=pending.total,
-
-                address=address,
-                **address_snapshot,
-
-                payment_method="ONLINE",
-                payment_status="PAID"
-            )
-
-            print(" ORDER CREATED:", order.id)
-
-            for item in pending.cart_data:
-                variant = ProductVariant.objects.get(id=item["variant_id"])
-
-                unit_price = variant.product.get_effective_price()
-
-                order.items.create(
-                    variant=variant,
-                    quantity=item["quantity"],
-                    original_price=variant.product.price,
-                    unit_price=unit_price,
-                    total_price=unit_price * item["quantity"],
-                    color=variant.color or ""
-                )
-
-                variant.stock -= item["quantity"]
-                variant.save()
-
-            CartItem.objects.filter(user=user).delete()
-
-            print(" CART CLEARED")
 
             pdf_path = generate_invoice_pdf(order)
             send_order_invoice_email(order, pdf_path)
             send_admin_new_order_alert(order)
 
             print(" EMAIL SENT")
-
-            pending.delete()
 
             return Response({
                 "message": "Order created successfully",
@@ -322,45 +331,12 @@ class CashfreeWebhookAPIView(APIView):
                 print(" ORDER:", order_number)
 
                 if payment["payment_status"] == "SUCCESS":
-
-                    if Order.objects.filter(order_number=order_number).exists():
-                        print(" ALREADY CREATED")
-                        return Response({"status": "already processed"})
-
-                    pending = PendingOrder.objects.get(order_number=order_number)
-                    user = pending.user
-                    address = (
-                        Address.objects.filter(pk=pending.address_id).first()
-                        if pending.address_id
-                        else None
+                    _, created = finalize_cashfree_order(order_number)
+                    print(
+                        " ORDER CREATED VIA WEBHOOK"
+                        if created
+                        else " ALREADY PROCESSED"
                     )
-                    address_snapshot = build_shipping_address_snapshot(address)
-                    address_snapshot.update({
-                        key: value
-                        for key, value in (pending.shipping_address_snapshot or {}).items()
-                        if key in address_snapshot
-                    })
-
-                    order = Order.objects.create(
-                        user=user,
-                        order_number=order_number,
-
-                        subtotal_amount=pending.subtotal,
-                        discount_amount=pending.discount,
-                        shipping_amount=pending.shipping,
-                        gst_amount=pending.gst,
-                        total_amount=pending.total,
-
-                        address=address,
-                        **address_snapshot,
-
-                        payment_method="ONLINE",
-                        payment_status="PAID"
-                    )
-
-                    print(" ORDER CREATED VIA WEBHOOK")
-
-                    pending.delete()
 
                 else:
                     print(" PAYMENT FAILED")

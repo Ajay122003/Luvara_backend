@@ -19,6 +19,67 @@ from admin_panel.models import SiteSettings
 GST_PERCENTAGE = Decimal("5.00")
 
 
+def build_order_item_snapshot(variant, quantity, request=None):
+    product = variant.product
+    product_image = ""
+    image = product.images.first()
+    if image:
+        try:
+            product_image = image.image.url
+            if request:
+                product_image = request.build_absolute_uri(product_image)
+        except Exception:
+            product_image = ""
+
+    return {
+        "variant_id": variant.pk,
+        "product_name": product.name,
+        "product_image": product_image,
+        "size": variant.size,
+        "quantity": quantity,
+        "original_price": str(product.price),
+        "unit_price": str(product.get_effective_price()),
+        "color": variant.color or "",
+    }
+
+
+def create_order_items(order, items, request=None):
+    created_items = []
+
+    for item in items:
+        if isinstance(item, dict):
+            variant = ProductVariant.objects.select_related("product").get(
+                pk=item["variant_id"]
+            )
+            quantity = item["quantity"]
+            snapshot = item
+        else:
+            variant = item.variant
+            quantity = item.quantity
+            snapshot = build_order_item_snapshot(variant, quantity, request)
+
+        product = variant.product
+        original_price = Decimal(snapshot.get("original_price", product.price))
+        unit_price = Decimal(
+            snapshot.get("unit_price", product.get_effective_price())
+        )
+        order_item = OrderItem.objects.create(
+            order=order,
+            variant=variant,
+            product_name=snapshot.get("product_name", product.name),
+            product_image=snapshot.get("product_image", ""),
+            size=snapshot.get("size", variant.size),
+            quantity=quantity,
+            original_price=original_price,
+            unit_price=unit_price,
+            total_price=unit_price * quantity,
+            color=snapshot.get("color", variant.color or ""),
+        )
+        created_items.append((order_item, variant, quantity))
+
+    return created_items
+
+
 # ======================================================
 # ORDER CREATE
 # ======================================================
@@ -206,41 +267,17 @@ class OrderCreateSerializer(serializers.Serializer):
         )
 
     # ---------------- ORDER ITEMS ----------------
-        for item in validated_data["cart_items"]:
-
-           product = item.variant.product
-           product_image = ""
-           image = product.images.first()
-           if image:
-              try:
-                 product_image = image.image.url
-                 request = self.context.get("request")
-                 if request:
-                    product_image = request.build_absolute_uri(product_image)
-              except Exception:
-                 product_image = ""
-
-           original_price = product.price
-           unit_price = product.get_effective_price()
-           total_price = unit_price * item.quantity
-
-           OrderItem.objects.create(
-              order=order,
-              variant=item.variant,
-              product_name=product.name,
-              product_image=product_image,
-              size=item.variant.size,
-              quantity=item.quantity,
-              original_price=original_price,
-              unit_price=unit_price,
-              total_price=total_price,
-              color=item.variant.color or "",
-            )
+        created_items = create_order_items(
+            order,
+            validated_data["cart_items"],
+            request=self.context.get("request"),
+        )
 
         # COD orders → reduce stock immediately
-           if payment_method == "COD":
-              item.variant.stock -= item.quantity
-              item.variant.save(update_fields=["stock"])
+        if payment_method == "COD":
+            for _, variant, quantity in created_items:
+                variant.stock -= quantity
+                variant.save(update_fields=["stock"])
 
     # ---------------- CLEAR CART ----------------
     # COD orders → clear cart immediately
